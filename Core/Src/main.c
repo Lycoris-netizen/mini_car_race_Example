@@ -26,6 +26,9 @@
 #include "dodo_BMI270.h" //陀螺仪驱动
 #include "multiplexer.h" //多路复用器驱动，用于读取光电管读数
 #include "stdio.h"
+#include "motor_control.h"
+#include "PID.h"
+#include "assist_function.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,8 +41,10 @@
 /* 陀螺仪调试打印开关。置 1 会引入约 5.4 kB 的浮点 printf 代码，
    MDK-Lite 的 32 kB 链接上限会因此报 L6047U 而链接失败。
    平时保持 0；要串口看数据时改成 1（并注意镜像大小）。 */
+
 #define GYRO_DEBUG 1
 #define IF_start_Brushless_motor 1 //是否启动无刷电机，1为启动，0为不启动
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -153,12 +158,13 @@ static void MX_TIM4_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 int fputc(int ch, FILE *f)
 {
   HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 0xffff);
   return ch;
 }
-float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z; // 陀螺仪数据
+
 /* USER CODE END 0 */
 void Init_brushless_motor(void)
 {
@@ -178,13 +184,44 @@ void Init_brushless_motor(void)
   /* Disabled fan: return immediately; DMA completes the existing
      0.9 ms -> 1.0 ms idle-signal sequence in the background. */
 }
+
+uint8_t control_flag=0;
+uint8_t print_flag=0;
+uint16_t mux_value=0;
+int16_t left_encoder_speed,right_encoder_speed;
+uint32_t now_time=0;
+float gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z;
+GPIO_PinState now_state,las_state;
+
+//TIM2中断，发车键控制
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+  if(htim==&htim2){
+    now_time++;
+    now_state=HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin);
+    if(las_state==GPIO_PIN_SET&&now_state==GPIO_PIN_RESET){
+      control_flag=1;
+    }
+    las_state=now_state;
+  }
+}
+
+void update_data(void){
+  MUX_get_value(&mux_value);
+  dodo_BMI270_get_data();
+  gyro_z=BMI270_gyro_transition(BMI270_gyro_z);
+
+  left_encoder_speed=(int16_t)__HAL_TIM_GET_COUNTER(&htim3);
+  __HAL_TIM_SET_COUNTER(&htim3,0);
+  right_encoder_speed=(int16_t)__HAL_TIM_GET_COUNTER(&htim4);
+  __HAL_TIM_SET_COUNTER(&htim4,0);
+}
+
 /**
  * @brief  The application entry point.
  * @retval int
  */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -216,12 +253,15 @@ int main(void)
   MX_TIM4_Init();
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+	HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
   Init_brushless_motor(); //等待无刷电调负压启动完成
   /* USER CODE BEGIN 2 */
   dodo_BMI270_init(); // 初始化陀螺仪
+  HAL_TIM_Base_Start_IT(&htim2);
   //pwm示例
-  //TIM1->CCR1 = 2000;
-  //TIM1->CCR2 = 2000;
+	
+	
   // 延时5000秒，等待无刷电调初始化
   // TIM1->PSC = 0;
 
@@ -232,15 +272,15 @@ int main(void)
   while (1)
   {
     // 以下为陀螺仪使用示例
-    dodo_BMI270_get_data();                         // 调用此函数会更新陀螺仪数据
-    gyro_x = BMI270_gyro_transition(BMI270_gyro_x); // 将原始陀螺仪数据转换为物理值，单位为度每秒
-    gyro_y = BMI270_gyro_transition(BMI270_gyro_y);
-    gyro_z = BMI270_gyro_transition(BMI270_gyro_z);
-    accel_x = BMI270_acc_transition(BMI270_accel_x); // 将原始加速度计数据转换为物理值，单位为g，一般不需要使用此数据
-    accel_y = BMI270_acc_transition(BMI270_accel_y);
-    accel_z = BMI270_acc_transition(BMI270_accel_z);
-    if (GYRO_DEBUG)
-      printf("%f,%f,%f,%f,%f,%f\r\n",gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z);
+    // dodo_BMI270_get_data();                         // 调用此函数会更新陀螺仪数据
+    // gyro_x = BMI270_gyro_transition(BMI270_gyro_x); // 将原始陀螺仪数据转换为物理值，单位为度每秒
+    // gyro_y = BMI270_gyro_transition(BMI270_gyro_y);
+    // gyro_z = BMI270_gyro_transition(BMI270_gyro_z);
+    // accel_x = BMI270_acc_transition(BMI270_accel_x); // 将原始加速度计数据转换为物理值，单位为g，一般不需要使用此数据
+    // accel_y = BMI270_acc_transition(BMI270_accel_y);
+    // accel_z = BMI270_acc_transition(BMI270_accel_z);
+    // if (GYRO_DEBUG)
+    //   printf("%f,%f,%f,%f,%f,%f\r\n",gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z);
     // 以下为读取光电管的示例（从左到右编号0~11）
     //  uint16_t mux_value;
     //  MUX_get_value(&mux_value);
@@ -248,6 +288,13 @@ int main(void)
     //    printf("%d,",MUX_GET_CHANNEL(mux_value,i));//获取第i个光电管的数值并输出
     //  }
     //  printf("\n");
+
+    if(control_flag){//发车
+      control_flag=0;
+      update_data();
+      parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+    }
+
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
