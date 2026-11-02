@@ -24,6 +24,17 @@ typedef struct{
     uint8_t CCR;
 }motor_t;
 
+void motor_init(void);
+
+void setPWM(motor_t motor);
+
+void stopPWM(motor_t motor);
+
+float calculate_line_position(uint16_t mux_value);
+
+void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,float right_encoder);
+
+
 extern uint8_t flag;
 
 #endif

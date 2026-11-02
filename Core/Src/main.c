@@ -27,8 +27,6 @@
 #include "multiplexer.h" //多路复用器驱动，用于读取光电管读数
 #include "stdio.h"
 #include "motor_control.h"
-#include "PID.h"
-#include "assist_function.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

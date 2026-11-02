@@ -7,3 +7,9 @@ float my_abs(float x){
 uint16_t my_abs_int(uint16_t x){
     return x>0? x:-x;
 }
+
+float constrain(float val,float min_val,float max_val){
+    if(val>max_val) return max_val;
+    if(val<min_val) return min_val;
+    return val;
+}
