@@ -42,8 +42,8 @@
    MDK-Lite 的 32 kB 链接上限会因此报 L6047U 而链接失败。
    平时保持 0；要串口看数据时改成 1（并注意镜像大小）。 */
 
-#define GYRO_DEBUG 1
-#define IF_start_Brushless_motor 1 //是否启动无刷电机，1为启动，0为不启动
+#define GYRO_DEBUG 0
+#define IF_start_Brushless_motor 0 //是否启动无刷电机，1为启动，0为不启动
 
 /* USER CODE END PD */
 
@@ -193,41 +193,19 @@ uint32_t now_time=0;
 float gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z;
 //GPIO_PinState now_state,las_state;
 
-//TIM2中断，发车键控制
-// void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-//   if(htim==&htim2){
-//     now_time++;
-//     now_state=HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin);
-//     if(las_state==GPIO_PIN_SET&&now_state==GPIO_PIN_RESET){
-//       control_flag=1;
-//     }
-//     las_state=now_state;
-//   }
-// }
 
-
-//uint32_t key_debounce_cnt;
-//void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-//  if(htim==&htim2){
-//    now_time++;
-//    now_state = HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port, GPIO_RUN_Pin);
-//    
-//    // 软件消抖逻辑（连续10ms电平一致才认为稳定）
-//    if (now_state != las_state) {
-//      key_debounce_cnt++;
-//      if (key_debounce_cnt >= 10) { 
-//        las_state = now_state; // 更新稳定状态
-//        key_debounce_cnt = 0;
-//        // 检测到下降沿（高 -> 低，即按键按下）
-//        if (las_state == GPIO_PIN_RESET) {
-//          control_flag = 1; 
-//        }
-//      }
-//    } else {
-//      key_debounce_cnt = 0;
-//    }
-//  }
-//}
+//TIM2中断，计时器
+volatile uint32_t run_time=0;
+volatile uint8_t run_flag=0;
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+  if(htim==&htim2){
+    run_time++;
+    if(run_time>1000){
+      run_flag=1;
+      HAL_TIM_Base_Stop_IT(&htim2);
+    }
+  }
+}
 
 void update_data(void){
   MUX_get_value(&mux_value);
@@ -282,7 +260,7 @@ int main(void)
   Init_brushless_motor(); //等待无刷电调负压启动完成
   /* USER CODE BEGIN 2 */
   dodo_BMI270_init(); // 初始化陀螺仪
-  //HAL_TIM_Base_Start_IT(&htim2);
+  
   //pwm示例
 	motor_init();
 	//HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
@@ -298,12 +276,21 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  while(HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin)==GPIO_PIN_SET);//发车键
+  while(HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin)==GPIO_PIN_SET); // 等待按下
+  HAL_Delay(20); // 消抖
+  while(HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin)!=GPIO_PIN_RESET){
+      while(HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin)==GPIO_PIN_SET);
+      HAL_Delay(20);
+  }
 
+  HAL_TIM_Base_Start_IT(&htim2);//按下发车键等待1s后发车
+  
   while (1)
   {
-    update_data();
-    parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+    if(run_flag){
+      update_data();
+      parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+    }
     // 以下为陀螺仪使用示例
     // dodo_BMI270_get_data();                         // 调用此函数会更新陀螺仪数据
     // gyro_x = BMI270_gyro_transition(BMI270_gyro_x); // 将原始陀螺仪数据转换为物理值，单位为度每秒
