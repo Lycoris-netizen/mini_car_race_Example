@@ -24,11 +24,21 @@ typedef struct{
     uint8_t CCR;
 }motor_t;
 
+typedef enum{
+	ZhiDao=0,
+	During_ZhiJiao=1,
+	During_WanDao=2,
+}condition_t;
+
 void motor_init(void);
 
 void setPWM(motor_t motor);
 
 void stopPWM(motor_t motor);
+
+uint8_t ZhiJiaoCheck(uint8_t active_count);
+
+uint8_t WanDaoCheck(uint8_t active_count);
 
 float calculate_line_position(uint16_t mux_value);
 

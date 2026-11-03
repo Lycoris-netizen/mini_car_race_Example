@@ -27,6 +27,8 @@
 #include "multiplexer.h" //多路复用器驱动，用于读取光电管读数
 #include "stdio.h"
 #include "motor_control.h"
+#include "PID.h"
+#include "assist_function.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -189,19 +191,43 @@ uint16_t mux_value=0;
 int16_t left_encoder_speed,right_encoder_speed;
 uint32_t now_time=0;
 float gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z;
-GPIO_PinState now_state,las_state;
+//GPIO_PinState now_state,las_state;
 
 //TIM2中断，发车键控制
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-  if(htim==&htim2){
-    now_time++;
-    now_state=HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin);
-    if(las_state==GPIO_PIN_SET&&now_state==GPIO_PIN_RESET){
-      control_flag=1;
-    }
-    las_state=now_state;
-  }
-}
+// void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+//   if(htim==&htim2){
+//     now_time++;
+//     now_state=HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin);
+//     if(las_state==GPIO_PIN_SET&&now_state==GPIO_PIN_RESET){
+//       control_flag=1;
+//     }
+//     las_state=now_state;
+//   }
+// }
+
+
+//uint32_t key_debounce_cnt;
+//void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+//  if(htim==&htim2){
+//    now_time++;
+//    now_state = HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port, GPIO_RUN_Pin);
+//    
+//    // 软件消抖逻辑（连续10ms电平一致才认为稳定）
+//    if (now_state != las_state) {
+//      key_debounce_cnt++;
+//      if (key_debounce_cnt >= 10) { 
+//        las_state = now_state; // 更新稳定状态
+//        key_debounce_cnt = 0;
+//        // 检测到下降沿（高 -> 低，即按键按下）
+//        if (las_state == GPIO_PIN_RESET) {
+//          control_flag = 1; 
+//        }
+//      }
+//    } else {
+//      key_debounce_cnt = 0;
+//    }
+//  }
+//}
 
 void update_data(void){
   MUX_get_value(&mux_value);
@@ -210,7 +236,7 @@ void update_data(void){
 
   left_encoder_speed=(int16_t)__HAL_TIM_GET_COUNTER(&htim3);
   __HAL_TIM_SET_COUNTER(&htim3,0);
-  right_encoder_speed=(int16_t)__HAL_TIM_GET_COUNTER(&htim4);
+  right_encoder_speed=-(int16_t)__HAL_TIM_GET_COUNTER(&htim4);
   __HAL_TIM_SET_COUNTER(&htim4,0);
 }
 
@@ -256,10 +282,14 @@ int main(void)
   Init_brushless_motor(); //等待无刷电调负压启动完成
   /* USER CODE BEGIN 2 */
   dodo_BMI270_init(); // 初始化陀螺仪
-  HAL_TIM_Base_Start_IT(&htim2);
+  //HAL_TIM_Base_Start_IT(&htim2);
   //pwm示例
-	
-	
+	motor_init();
+	//HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
+	//HAL_GPIO_WritePin(R_DIR_GPIO_Port, R_DIR_Pin, GPIO_PIN_SET);
+	//TIM1->CCR1=500;
+	//TIM1->CCR2=500;
+
   // 延时5000秒，等待无刷电调初始化
   // TIM1->PSC = 0;
 
@@ -267,8 +297,13 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  while(HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin)==GPIO_PIN_SET);//发车键
+
   while (1)
   {
+    update_data();
+    parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
     // 以下为陀螺仪使用示例
     // dodo_BMI270_get_data();                         // 调用此函数会更新陀螺仪数据
     // gyro_x = BMI270_gyro_transition(BMI270_gyro_x); // 将原始陀螺仪数据转换为物理值，单位为度每秒
@@ -287,11 +322,16 @@ int main(void)
     //  }
     //  printf("\n");
 
-    if(control_flag){//发车
-      control_flag=0;
-      update_data();
-      parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
-    }
+    // if(control_flag){//发车
+    //   control_flag=0;
+    //   update_data();
+    //   TIM1->CCR1=500;
+    //   TIM1->CCR2=500;
+    //   HAL_Delay(2000);
+    //   TIM1->CCR1=0;
+    //   TIM1->CCR2=0;
+      // parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+    // }
 
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */

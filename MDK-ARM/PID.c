@@ -13,7 +13,10 @@ float pid_calculate(PID_Controller *controller,float setpoint,float measurement)
     float error=setpoint-measurement;
     controller->integral+=error;
     float derivative=error-controller->last_error;
-
+	
+	  if(controller->integral>2000) controller->integral=2000;
+		if(controller->integral<-2000) controller->integral=-2000;
+	
     controller->output=controller->kp*error+controller->ki*controller->integral+controller->kd*derivative;
 
     controller->last_error=error;

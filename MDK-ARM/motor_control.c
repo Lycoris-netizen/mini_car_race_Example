@@ -13,23 +13,23 @@
 #define PPDD_GKD 0.0f
 
 //速度环PID参数
-#define L_SPEED_KP 0.0f
-#define L_SPEED_KI 0.0f
+#define L_SPEED_KP 200.0f
+#define L_SPEED_KI 0.1f
 #define L_SPEED_KD 0.0f
-#define R_SPEED_KP 0.0f
-#define R_SPEED_KI 0.0f
+#define R_SPEED_KP 200.0f
+#define R_SPEED_KI 0.1f
 #define R_SPEED_KD 0.0f
 
 //目标速度
-#define TARGET_SPEED 0.0f
+#define TARGET_SPEED 15.0f
 
 //速度积分限幅
-#define SPEED_I_MAX 0.0f
+#define SPEED_I_MAX 10.0f
 // #define GUOCHONG 0.0f
 
 //PWM输出限制
-#define PWM_MAX 1500
-#define PWM_MIN -1500
+#define PWM_MAX 1000
+#define PWM_MIN -1000
 
 float target_speed_now=TARGET_SPEED;
 float weighted_sum=0.0f;
@@ -37,6 +37,8 @@ float last_position_error=0.0f;
 uint8_t active_count=0;
 uint8_t stop_flag=0;
 uint8_t mux_array[12]={0};
+uint8_t left_group_last=0,right_group_last=0;
+uint8_t flag=0;
 
 
 //控制器
@@ -64,6 +66,9 @@ PID_Controller right_pid={
 //左右电机
 motor_t motor_left;
 motor_t motor_right;
+
+//状态
+condition_t condition_now=ZhiDao;
 
 //motor初始化函数
 void motor_init(void){
@@ -109,6 +114,51 @@ void stopPWM(motor_t motor){
     stop_flag=1;
 }
 
+//直角
+uint8_t ZhiJiaoCheck(uint8_t active_count){
+    if(active_count>=9) return 0;
+    uint8_t result=0,left_group=0,right_group=0;
+
+    for(uint8_t i=0;i<2;i++){
+        if(mux_array[i]) left_group++;
+        if(mux_array[11-i]) right_group++;
+    }
+
+    if(left_group==2&&left_group_last==0){
+        result=1;
+        flag=1;
+    }
+    else if(right_group==2&&right_group_last==0){
+        result=2;
+        flag=1;
+    }
+
+    left_group_last=left_group;
+    right_group_last=right_group;
+    return result;
+}
+
+//弯道
+uint8_t WanDaoCheck(uint8_t active_count){
+    uint8_t result=0;
+    if(my_abs(weighted_sum)>9.0) result=2;
+    return result;
+}
+
+//状态机
+void update_condition(uint8_t active_count){
+    if(condition_now==ZhiDao){
+        if(ZhiJiaoCheck(active_count)) condition_now=During_ZhiJiao;
+        else if(WanDaoCheck(active_count)) condition_now=During_WanDao;
+    }
+    else if(condition_now==During_ZhiJiao){
+        if(ZhiJiaoCheck(active_count)==0) condition_now=ZhiDao;
+    }
+    else if(condition_now==During_WanDao){
+        if(WanDaoCheck(active_count)==0) condition_now=ZhiDao;
+    }
+}
+
 //计算光电管中心位置偏差
 float calculate_line_position(uint16_t mux_value){
     weighted_sum=0.0f;
@@ -129,12 +179,20 @@ float calculate_line_position(uint16_t mux_value){
 
 //并联PID控制主函数
 void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,float right_encoder){
+    //偏差计算
     float line_position=calculate_line_position(mux_value);
     last_position_error=line_position;
-
+    //PD控制计算位置偏差
     float positional_deviation=ppdd_calculate(&steering_ppdd,0.0f,line_position,gyro_z);
-    // 根据位置偏差确定左右电机的差速度（这里展示用y = x映射）
+    //差速度映射
 	float differential_speed=positional_deviation;
+
+    if(condition_now==During_ZhiJiao) differential_speed*=2;
+    else if(condition_now==During_WanDao) differential_speed*=1.5;
+
+    //differential_speed=0;//调速度环时解除注释
+    //target_speed_now=0;//调位置环时解除注释
+
     motor_left.target_speed=target_speed_now-differential_speed;
     motor_right.target_speed=target_speed_now+differential_speed;
 
@@ -147,4 +205,6 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     motor_right.pwm_output=pid_calculate(&motor_right.speed_pid,motor_right.target_speed,motor_right.current_speed);
     motor_left.pwm_output=constrain(motor_left.pwm_output,PWM_MIN,PWM_MAX);
     motor_right.pwm_output=constrain(motor_right.pwm_output,PWM_MIN,PWM_MAX);
+	setPWM(motor_left);
+	setPWM(motor_right);
 }
