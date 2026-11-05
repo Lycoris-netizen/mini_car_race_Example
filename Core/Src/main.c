@@ -202,8 +202,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     run_time++;
     if(run_time>1000){
       run_flag=1;
-      HAL_TIM_Base_Stop_IT(&htim2);
+      //HAL_TIM_Base_Stop_IT(&htim2);
     }
+		if(run_time>3000){
+			run_flag=2;
+			HAL_TIM_Base_Stop_IT(&htim2);
+		}
   }
 }
 
@@ -285,12 +289,29 @@ int main(void)
 
   HAL_TIM_Base_Start_IT(&htim2);//按下发车键等待1s后发车
   
+	//转4次90度，间隔1s
+	/*HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(R_DIR_GPIO_Port, R_DIR_Pin, GPIO_PIN_RESET);
+	HAL_Delay(1000);
+	for( int i=0;i<4;i++)
+	{
+		TIM1->CCR1 = 500;
+		TIM1->CCR2 = 500;
+		HAL_Delay(400);
+		TIM1->CCR1 = 0;
+		TIM1->CCR2 = 0;
+		HAL_Delay(1000);
+	}
+	*/
+
+	
   while (1)
   {
-    if(run_flag){
+    if(run_flag==1){
       update_data();
       parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
     }
+		// else if(run_flag==2) break;//跑1m后停止
     // 以下为陀螺仪使用示例
     // dodo_BMI270_get_data();                         // 调用此函数会更新陀螺仪数据
     // gyro_x = BMI270_gyro_transition(BMI270_gyro_x); // 将原始陀螺仪数据转换为物理值，单位为度每秒
@@ -323,6 +344,8 @@ int main(void)
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
+	TIM1->CCR1=0;
+	TIM1->CCR2=0;
   /* USER CODE END 3 */
 }
 

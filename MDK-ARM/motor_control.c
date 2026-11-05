@@ -7,31 +7,34 @@
 #define MotorPIN_Right	R_DIR_Pin
 
 //位置环ppdd参数
-#define PPDD_KP1 0.0f
+#define PPDD_KP1 6.25f
+/*6.2f*/
 #define PPDD_KP2 0.0f
 #define PPDD_KD  0.0f
 #define PPDD_GKD 0.0f
 
 //速度环PID参数
 #define L_SPEED_KP 200.0f
-#define L_SPEED_KI 0.1f
+#define L_SPEED_KI 0.0f
 #define L_SPEED_KD 0.0f
 #define R_SPEED_KP 200.0f
-#define R_SPEED_KI 0.1f
+#define R_SPEED_KI 0.0f
 #define R_SPEED_KD 0.0f
 
 //目标速度
 #define TARGET_SPEED 15.0f
+/*15.0f*/
 
 //速度积分限幅
-#define SPEED_I_MAX 10.0f
+#define SPEED_I_MAX 2000.0f
 // #define GUOCHONG 0.0f
 
 //PWM输出限制
-#define PWM_MAX 1000
-#define PWM_MIN -1000
+#define PWM_MAX 700
+#define PWM_MIN -700
 
 float target_speed_now=TARGET_SPEED;
+float differential_speed=0;
 float weighted_sum=0.0f;
 float last_position_error=0.0f;
 uint8_t active_count=0;
@@ -39,6 +42,7 @@ uint8_t stop_flag=0;
 uint8_t mux_array[12]={0};
 uint8_t left_group_last=0,right_group_last=0;
 uint8_t flag=0;
+int16_t debug1=0,debug2=0,debug3=0,debug4=0;
 
 
 //控制器
@@ -166,6 +170,7 @@ float calculate_line_position(uint16_t mux_value){
     //更新读数
     for(uint8_t i=0;i<12;i++){
         mux_array[i]=MUX_GET_CHANNEL(mux_value,i);
+			  if(i==11) continue;//神的逻辑
         if(MUX_GET_CHANNEL(mux_value,i)){
             weighted_sum+=i-5.5;
             active_count++;
@@ -185,16 +190,18 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     //PD控制计算位置偏差
     float positional_deviation=ppdd_calculate(&steering_ppdd,0.0f,line_position,gyro_z);
     //差速度映射
-	float differential_speed=positional_deviation;
+	  differential_speed=positional_deviation;
 
-    if(condition_now==During_ZhiJiao) differential_speed*=2;
-    else if(condition_now==During_WanDao) differential_speed*=1.5;
+    if(condition_now==During_ZhiJiao) differential_speed*=5;
+    else if(condition_now==During_WanDao) //differential_speed*=1.5;
 
-    //differential_speed=0;//调速度环时解除注释
     //target_speed_now=0;//调位置环时解除注释
-
+		debug2=differential_speed;
+		debug1=target_speed_now;
     motor_left.target_speed=target_speed_now-differential_speed;
     motor_right.target_speed=target_speed_now+differential_speed;
+		debug3=motor_left.target_speed;
+		debug4=motor_right.target_speed;
 
     // 更新当前速度（从编码器读取）
     motor_left.current_speed=left_encoder;
