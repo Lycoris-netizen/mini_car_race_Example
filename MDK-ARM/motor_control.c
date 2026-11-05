@@ -164,12 +164,14 @@ uint8_t ZhiJiaoHold(uint8_t active_count)
 //状态机
 void update_condition(uint8_t active_count)
 {
+    uint8_t zhi_angle = ZhiJiaoEdge(active_count);   /* ← 移到外面，每拍都调 */
+
     if (condition_now == ZhiDao) {
-        if (ZhiJiaoEdge(active_count))            condition_now = During_ZhiJiao;
+        if (zhi_angle)                            condition_now = During_ZhiJiao;
         else if (WanDaoCheck(active_count))       condition_now = During_WanDao;
     }
     else if (condition_now == During_ZhiJiao) {
-        if (ZhiJiaoHold(active_count) == 0)       condition_now = ZhiDao;   // 离开直角才退出
+        if (ZhiJiaoHold(active_count) == 0)       condition_now = ZhiDao;
     }
     else if (condition_now == During_WanDao) {
         if (WanDaoCheck(active_count) == 0)       condition_now = ZhiDao;
