@@ -6,7 +6,7 @@
 
 float my_abs(float x);
 
-uint16_t my_abs_int(uint16_t x);
+int16_t my_abs_int(int16_t x);
 
 float constrain(float val,float min_val,float max_val);
 

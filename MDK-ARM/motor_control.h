@@ -8,7 +8,6 @@
 #include "main.h"
 #include "dodo_BMI270.h"
 #include "assist_function.h"
-#include "motor_control.h"
 #include "PID.h"
 #include "multiplexer.h"
 
@@ -36,9 +35,13 @@ void setPWM(motor_t motor);
 
 void stopPWM(motor_t motor);
 
-uint8_t ZhiJiaoCheck(uint8_t active_count);
+uint8_t ZhiJiaoEdge(uint8_t active_count);
+
+uint8_t ZhiJiaoHold(uint8_t active_count);
 
 uint8_t WanDaoCheck(uint8_t active_count);
+
+void update_condition(uint8_t active_count);
 
 float calculate_line_position(uint16_t mux_value);
 

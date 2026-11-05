@@ -4,7 +4,7 @@ float my_abs(float x){
     return x>0.0f? x:-x;
 }
 
-uint16_t my_abs_int(uint16_t x){
+int16_t my_abs_int(int16_t x){
     return x>0? x:-x;
 }
 

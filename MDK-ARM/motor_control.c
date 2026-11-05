@@ -42,7 +42,7 @@ uint8_t stop_flag=0;
 uint8_t mux_array[12]={0};
 uint8_t left_group_last=0,right_group_last=0;
 uint8_t flag=0;
-int16_t debug1=0,debug2=0,debug3=0,debug4=0;
+float debug1=0,debug2=0,debug3=0,debug4=0;
 
 
 //控制器
@@ -91,10 +91,16 @@ void motor_init(void){
 
 //设置PWM波
 void setPWM(motor_t motor){
+    uint16_t pwm_output=my_abs_int(motor.pwm_output);
     if(motor.pwm_output==0||stop_flag){
+        if(motor.CCR==1){
+            TIM1->CCR1=pwm_output;
+        }
+        else if(motor.CCR==2){
+            TIM1->CCR2=pwm_output;
+        }
         return;
     }
-    uint16_t pwm_output=my_abs_int(motor.pwm_output);
     if(motor.CCR==1){
         TIM1->CCR1=pwm_output;
     }
@@ -111,55 +117,62 @@ void setPWM(motor_t motor){
 
 //停止PWM
 void stopPWM(motor_t motor){
-    motor_left.pwm_output=1;
-    motor_right.pwm_output=1;
-    setPWM(motor_left);
-    setPWM(motor_right);
+    motor_left.pwm_output=0;
+    motor_right.pwm_output=0;
+    TIM1->CCR1=0;
+    TIM1->CCR2=0;
     stop_flag=1;
 }
 
-//直角
-uint8_t ZhiJiaoCheck(uint8_t active_count){
-    if(active_count>=9) return 0;
-    uint8_t result=0,left_group=0,right_group=0;
-
-    for(uint8_t i=0;i<2;i++){
-        if(mux_array[i]) left_group++;
-        if(mux_array[11-i]) right_group++;
-    }
-
-    if(left_group==2&&left_group_last==0){
-        result=1;
-        flag=1;
-    }
-    else if(right_group==2&&right_group_last==0){
-        result=2;
-        flag=1;
-    }
-
-    left_group_last=left_group;
-    right_group_last=right_group;
-    return result;
-}
-
-//弯道
+//弯道（阈值 9.0 不可达，实际永不触发，保留供以后调整）
 uint8_t WanDaoCheck(uint8_t active_count){
     uint8_t result=0;
     if(my_abs(weighted_sum)>9.0) result=2;
     return result;
 }
 
+//直角边沿判定：只在"非2 -> 2"时触发一次，用于进入直角状态
+//active_count >= 9 时视为宽线/十字，不判直角
+uint8_t ZhiJiaoEdge(uint8_t active_count)
+{
+    uint8_t left_group  = mux_array[0] + mux_array[1];
+    uint8_t right_group = mux_array[10] + mux_array[11];
+    uint8_t result = 0;
+
+    if (active_count < 9) {
+        if (left_group == 2 && left_group_last != 2)        { result = 1; flag = 1; }
+        else if (right_group == 2 && right_group_last != 2) { result = 2; flag = 1; }
+    }
+
+    /* last 更新必须放在 active_count 判断之外，否则宽线过后边沿判断会错 */
+    left_group_last  = left_group;
+    right_group_last = right_group;
+    return result;
+}
+
+//直角保持判定：只要 left_group==2 或 right_group==2 就维持直角状态
+uint8_t ZhiJiaoHold(uint8_t active_count)
+{
+    if (active_count >= 9) return 0;
+    uint8_t left_group  = mux_array[0] + mux_array[1];
+    uint8_t right_group = mux_array[10] + mux_array[11];
+    if (left_group  == 2) return 1;
+    if (right_group == 2) return 2;
+    return 0;
+}
+
 //状态机
-void update_condition(uint8_t active_count){
-    if(condition_now==ZhiDao){
-        if(ZhiJiaoCheck(active_count)) condition_now=During_ZhiJiao;
-        else if(WanDaoCheck(active_count)) condition_now=During_WanDao;
+void update_condition(uint8_t active_count)
+{
+    if (condition_now == ZhiDao) {
+        if (ZhiJiaoEdge(active_count))            condition_now = During_ZhiJiao;
+        else if (WanDaoCheck(active_count))       condition_now = During_WanDao;
     }
-    else if(condition_now==During_ZhiJiao){
-        if(ZhiJiaoCheck(active_count)==0) condition_now=ZhiDao;
+    else if (condition_now == During_ZhiJiao) {
+        if (ZhiJiaoHold(active_count) == 0)       condition_now = ZhiDao;   // 离开直角才退出
     }
-    else if(condition_now==During_WanDao){
-        if(WanDaoCheck(active_count)==0) condition_now=ZhiDao;
+    else if (condition_now == During_WanDao) {
+        if (WanDaoCheck(active_count) == 0)       condition_now = ZhiDao;
     }
 }
 
@@ -170,7 +183,7 @@ float calculate_line_position(uint16_t mux_value){
     //更新读数
     for(uint8_t i=0;i<12;i++){
         mux_array[i]=MUX_GET_CHANNEL(mux_value,i);
-			  if(i==11) continue;//神的逻辑
+		if(i==11) continue;//神的逻辑
         if(MUX_GET_CHANNEL(mux_value,i)){
             weighted_sum+=i-5.5;
             active_count++;
@@ -192,26 +205,37 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     //差速度映射
 	  differential_speed=positional_deviation;
 
-    if(condition_now==During_ZhiJiao) differential_speed*=5;
+    update_condition(active_count);
+    if(condition_now==During_ZhiJiao) differential_speed*=1.5;
     else if(condition_now==During_WanDao) //differential_speed*=1.5;
 
     //target_speed_now=0;//调位置环时解除注释
-		debug2=differential_speed;
-		debug1=target_speed_now;
-    motor_left.target_speed=target_speed_now-differential_speed;
-    motor_right.target_speed=target_speed_now+differential_speed;
-		debug3=motor_left.target_speed;
-		debug4=motor_right.target_speed;
+	debug2=differential_speed;
+	debug1=target_speed_now;
+
+    float tl=target_speed_now-differential_speed;
+    float tr=target_speed_now+differential_speed;
+    if(tl<0) tl=0;
+    if(tr<0) tr=0;
+    motor_left.target_speed=tl;
+    motor_right.target_speed=tr;
+	
+    debug3=motor_left.target_speed;
+	debug4=motor_right.target_speed;
 
     // 更新当前速度（从编码器读取）
     motor_left.current_speed=left_encoder;
     motor_right.current_speed=right_encoder;
 
     // 左右电机PID控制
-    motor_left.pwm_output=pid_calculate(&motor_left.speed_pid,motor_left.target_speed,motor_left.current_speed); 
-    motor_right.pwm_output=pid_calculate(&motor_right.speed_pid,motor_right.target_speed,motor_right.current_speed);
-    motor_left.pwm_output=constrain(motor_left.pwm_output,PWM_MIN,PWM_MAX);
-    motor_right.pwm_output=constrain(motor_right.pwm_output,PWM_MIN,PWM_MAX);
+    float pwm_l=pid_calculate(&motor_left.speed_pid,motor_left.target_speed,motor_left.current_speed);
+    float pwm_r=pid_calculate(&motor_right.speed_pid,motor_right.target_speed,motor_right.current_speed);
+    pwm_l = constrain(pwm_l, PWM_MIN, PWM_MAX);   // 先限幅 float
+    pwm_r = constrain(pwm_r, PWM_MIN, PWM_MAX);
+    if (motor_left.target_speed  < 0.5f && pwm_l < 0.0f) pwm_l = 0.0f;
+    if (motor_right.target_speed < 0.5f && pwm_r < 0.0f) pwm_r = 0.0f;
+    motor_left.pwm_output=(int16_t)pwm_l;
+    motor_right.pwm_output=(int16_t)pwm_r;
 	setPWM(motor_left);
 	setPWM(motor_right);
 }
