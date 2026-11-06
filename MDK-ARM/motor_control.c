@@ -27,7 +27,6 @@
 
 //速度积分限幅
 #define SPEED_I_MAX 2000.0f
-// #define GUOCHONG 0.0f
 
 //PWM输出限制
 #define PWM_MAX 700
@@ -44,6 +43,28 @@ uint8_t left_group_last=0,right_group_last=0;
 uint8_t flag=0;
 float debug1=0,debug2=0,debug3=0,debug4=0;
 
+// 环岛参数
+#define RA_ENTER_CONFIRM  4     // 入环连续确认拍数（防抖）
+#define RA_TIMEOUT        10000  // 环岛超时保护
+#define RA_COOLDOWN       1000   // 出环冷却时间
+
+// 【入环强制打角】
+#define RA_ENTER_FORCE_TICKS 30 // 入环前 30 拍强制打角
+#define RA_FORCE_DIFF        15.0f // 强制打角差速
+
+// 【出环强制打角】(新增)
+#define RA_EXIT_FORCE_TICKS  40 // 出环时强制打角的拍数
+uint8_t  ra_exit_force_cnt = 0;         // 出环打角倒计时
+
+uint8_t  roundabout_enter_cnt = 0;
+uint16_t roundabout_time_cnt  = 0;
+uint8_t  roundabout_corner_cnt = 0;   
+uint8_t  in_corner_flag = 0;          
+uint16_t roundabout_cooldown = 0;     
+uint8_t  roundabout_dir = 0;          // 0=未知, 1=左入环, 2=右入环
+// 宽线判定范围（下限建议保持 3 防止直道误判，上限放宽到 7）
+#define WIDE_LINE_MIN 3
+#define WIDE_LINE_MAX 7
 
 //控制器
 PID_Controller steering_ppdd={
@@ -124,15 +145,14 @@ void stopPWM(motor_t motor){
     stop_flag=1;
 }
 
-//弯道（阈值 9.0 不可达，实际永不触发，保留供以后调整）
+//弯道
 uint8_t WanDaoCheck(uint8_t active_count){
     uint8_t result=0;
     if(my_abs(weighted_sum)>9.0) result=2;
     return result;
 }
 
-//直角边沿判定：只在"非2 -> 2"时触发一次，用于进入直角状态
-//active_count >= 9 时视为宽线/十字，不判直角
+//直角边沿判定
 uint8_t ZhiJiaoEdge(uint8_t active_count)
 {
     uint8_t left_group  = mux_array[0] + mux_array[1];
@@ -144,13 +164,12 @@ uint8_t ZhiJiaoEdge(uint8_t active_count)
         else if (right_group == 2 && right_group_last != 2) { result = 2; flag = 1; }
     }
 
-    /* last 更新必须放在 active_count 判断之外，否则宽线过后边沿判断会错 */
     left_group_last  = left_group;
     right_group_last = right_group;
     return result;
 }
 
-//直角保持判定：只要 left_group==2 或 right_group==2 就维持直角状态
+//直角保持判定
 uint8_t ZhiJiaoHold(uint8_t active_count)
 {
     if (active_count >= 9) return 0;
@@ -161,20 +180,116 @@ uint8_t ZhiJiaoHold(uint8_t active_count)
     return 0;
 }
 
+// 入环检测：分叉/变宽
+uint8_t RoundaboutDetect(uint8_t active_count)
+{
+    if (active_count >= 9) return 0; // 排除十字/超宽线
+    if (active_count >= WIDE_LINE_MIN && active_count <= WIDE_LINE_MAX) return 1; 
+    return 0;
+}
+
 //状态机
 void update_condition(uint8_t active_count)
 {
-    uint8_t zhi_angle = ZhiJiaoEdge(active_count);   /* ← 移到外面，每拍都调 */
+    static uint8_t straight_debounce = 0;
 
-    if (condition_now == ZhiDao) {
-        if (zhi_angle)                            condition_now = During_ZhiJiao;
-        else if (WanDaoCheck(active_count))       condition_now = During_WanDao;
+    // 冷却期保护：强行让直角判定失效，防止出环的宽线吃掉后续直角
+    if (roundabout_cooldown > 0) {
+        roundabout_cooldown--;
+        left_group_last = mux_array[0] + mux_array[1]; 
+        right_group_last = mux_array[10] + mux_array[11];
     }
-    else if (condition_now == During_ZhiJiao) {
-        if (ZhiJiaoHold(active_count) == 0)       condition_now = ZhiDao;
-    }
-    else if (condition_now == During_WanDao) {
-        if (WanDaoCheck(active_count) == 0)       condition_now = ZhiDao;
+
+    uint8_t zhi_angle = ZhiJiaoEdge(active_count);
+
+    switch (condition_now) {
+    case ZhiDao:
+        if (RoundaboutDetect(active_count) && roundabout_cooldown == 0) {
+            roundabout_enter_cnt++;
+            if (roundabout_enter_cnt >= RA_ENTER_CONFIRM) {
+                condition_now = Roundabout_Run; 
+                roundabout_corner_cnt = 0; 
+                in_corner_flag = 0;
+                straight_debounce = 0;   
+                roundabout_time_cnt = 0; 
+                roundabout_dir = (weighted_sum < 0) ? 1 : 2; // 记录入环方向
+            }
+        } 
+        else if (zhi_angle) {
+            condition_now = During_ZhiJiao;
+            roundabout_enter_cnt = 0; 
+        } 
+        else {
+            roundabout_enter_cnt = 0; 
+        }
+        break;
+
+    case During_ZhiJiao:
+        if (RoundaboutDetect(active_count) && roundabout_cooldown == 0) {
+            roundabout_enter_cnt++;
+            if (roundabout_enter_cnt >= RA_ENTER_CONFIRM) {
+                condition_now = Roundabout_Run; 
+                roundabout_corner_cnt = 0; 
+                in_corner_flag = 0;
+                straight_debounce = 0;
+                roundabout_time_cnt = 0; 
+                roundabout_dir = (weighted_sum < 0) ? 1 : 2;
+                break;
+            }
+            break; 
+        } else {
+            roundabout_enter_cnt = 0;
+        }
+        
+        if (ZhiJiaoHold(active_count) == 0) condition_now = ZhiDao;
+        break;
+
+    case During_WanDao:
+        if (WanDaoCheck(active_count) == 0) condition_now = ZhiDao;
+        break;
+
+    case Roundabout_Run:
+        if (++roundabout_time_cnt > RA_TIMEOUT) {
+            condition_now = ZhiDao;
+            roundabout_cooldown = RA_COOLDOWN;
+            roundabout_corner_cnt = 0; 
+            in_corner_flag = 0;
+            break;
+        }
+        
+        // 数角判定：使用放宽后的宽线范围
+        if (active_count >= WIDE_LINE_MIN && active_count <= WIDE_LINE_MAX) {
+            if (in_corner_flag == 0) {
+                roundabout_corner_cnt++; 
+                in_corner_flag = 1;
+            }
+            straight_debounce = 0; 
+        } 
+        else if (active_count >= 1 && active_count <= 2) {
+            straight_debounce++;
+            if (straight_debounce >= 10) { 
+                in_corner_flag = 0; 
+            }
+        }
+
+        // 走完 6 个角，触发强制出环
+        if (roundabout_corner_cnt >= 6) {
+            condition_now = Roundabout_Exit;
+            ra_exit_force_cnt = RA_EXIT_FORCE_TICKS; // 【新增】启动出环打角倒计时
+        }
+        break;
+
+    case Roundabout_Exit:
+        condition_now = ZhiDao;
+        roundabout_enter_cnt = 0;
+        roundabout_corner_cnt = 0;
+        roundabout_time_cnt = 0;
+        roundabout_cooldown = RA_COOLDOWN; 
+        break;
+
+    default:
+        condition_now = ZhiDao;
+        break;
     }
 }
 
@@ -182,10 +297,8 @@ void update_condition(uint8_t active_count)
 float calculate_line_position(uint16_t mux_value){
     weighted_sum=0.0f;
     active_count=0;
-    //更新读数
     for(uint8_t i=0;i<12;i++){
         mux_array[i]=MUX_GET_CHANNEL(mux_value,i);
-		if(i==11) continue;//神的逻辑
         if(MUX_GET_CHANNEL(mux_value,i)){
             weighted_sum+=i-5.5;
             active_count++;
@@ -199,45 +312,62 @@ float calculate_line_position(uint16_t mux_value){
 
 //并联PID控制主函数
 void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,float right_encoder){
-    //偏差计算
     float line_position=calculate_line_position(mux_value);
     last_position_error=line_position;
-    //PD控制计算位置偏差
+    
     float positional_deviation=ppdd_calculate(&steering_ppdd,0.0f,line_position,gyro_z);
-    //差速度映射
-	  differential_speed=positional_deviation;
+    differential_speed=positional_deviation;
 
     update_condition(active_count);
-    if(condition_now==During_ZhiJiao) differential_speed*=1.5;
-    else if(condition_now==During_WanDao) //differential_speed*=1.5;
+    
+    // 直角放大
+    if(condition_now == During_ZhiJiao) {
+        differential_speed *= 1.5;
+    }
+    
+    // 【入环强制打角】进入环岛前 30 拍，硬拉进去
+    if (condition_now == Roundabout_Run && roundabout_time_cnt <= RA_ENTER_FORCE_TICKS) {
+        if (roundabout_dir == 1) {
+            differential_speed = -RA_FORCE_DIFF; // 左入环 -> 强制左打角
+        } else if (roundabout_dir == 2) {
+            differential_speed = RA_FORCE_DIFF;  // 右入环 -> 强制右打角
+        }
+    }
 
-    //target_speed_now=0;//调位置环时解除注释
-	debug2=differential_speed;
-	debug1=target_speed_now;
+    // 【出环强制打角】刚数完 6 个角，强制反向打角汇入直道
+    if (ra_exit_force_cnt > 0) {
+        ra_exit_force_cnt--;
+        if (roundabout_dir == 1) {
+            differential_speed = RA_FORCE_DIFF;  // 左入环的出环口 -> 向右汇入直道
+        } else if (roundabout_dir == 2) {
+            differential_speed = -RA_FORCE_DIFF; // 右入环的出环口 -> 向左汇入直道
+        }
+    }
 
-    float tl=target_speed_now-differential_speed;
-    float tr=target_speed_now+differential_speed;
-    if(tl<0) tl=0;
-    if(tr<0) tr=0;
-    motor_left.target_speed=tl;
-    motor_right.target_speed=tr;
+    debug2 = differential_speed;
+    debug1 = target_speed_now;
+
+    float tl = target_speed_now - differential_speed;
+    float tr = target_speed_now + differential_speed;
+    if(tl < 0) tl = 0;
+    if(tr < 0) tr = 0;
+    motor_left.target_speed = tl;
+    motor_right.target_speed = tr;
 	
-    debug3=motor_left.target_speed;
-	debug4=motor_right.target_speed;
+    debug3 = motor_left.target_speed;
+    debug4 = motor_right.target_speed;
 
-    // 更新当前速度（从编码器读取）
-    motor_left.current_speed=left_encoder;
-    motor_right.current_speed=right_encoder;
+    motor_left.current_speed = left_encoder;
+    motor_right.current_speed = right_encoder;
 
-    // 左右电机PID控制
-    float pwm_l=pid_calculate(&motor_left.speed_pid,motor_left.target_speed,motor_left.current_speed);
-    float pwm_r=pid_calculate(&motor_right.speed_pid,motor_right.target_speed,motor_right.current_speed);
-    pwm_l = constrain(pwm_l, PWM_MIN, PWM_MAX);   // 先限幅 float
+    float pwm_l = pid_calculate(&motor_left.speed_pid, motor_left.target_speed, motor_left.current_speed);
+    float pwm_r = pid_calculate(&motor_right.speed_pid, motor_right.target_speed, motor_right.current_speed);
+    pwm_l = constrain(pwm_l, PWM_MIN, PWM_MAX);
     pwm_r = constrain(pwm_r, PWM_MIN, PWM_MAX);
     if (motor_left.target_speed  < 0.5f && pwm_l < 0.0f) pwm_l = 0.0f;
     if (motor_right.target_speed < 0.5f && pwm_r < 0.0f) pwm_r = 0.0f;
-    motor_left.pwm_output=(int16_t)pwm_l;
-    motor_right.pwm_output=(int16_t)pwm_r;
-	setPWM(motor_left);
-	setPWM(motor_right);
+    motor_left.pwm_output  = (int16_t)pwm_l;
+    motor_right.pwm_output = (int16_t)pwm_r;
+    setPWM(motor_left);
+    setPWM(motor_right);
 }
