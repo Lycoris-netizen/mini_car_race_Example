@@ -45,6 +45,11 @@
 #define GYRO_DEBUG 0
 #define IF_start_Brushless_motor 0 //是否启动无刷电机，1为启动，0为不启动
 
+/* ========== 自动停车配置 ========== */
+#define ENABLE_AUTO_STOP     0     // 1 为启用自动停车，0 为不启用（一直跑）
+#define AUTO_STOP_TIME_MS    5000  // 发车后运行多少毫秒自动停车（例如 5000 = 5秒）
+/* ================================== */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -194,20 +199,33 @@ float gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z;
 //GPIO_PinState now_state,las_state;
 
 
-//TIM2中断，计时器
-volatile uint32_t run_time=0;
-volatile uint8_t run_flag=0;
+//TIM2中断，计时器 (1ms触发一次)
+volatile uint32_t run_time = 0;
+volatile uint32_t drive_time = 0; // 新增：发车后的运行时间
+volatile uint8_t run_flag = 0;
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-  if(htim==&htim2){
+  if(htim == &htim2){
     run_time++;
-    if(run_time>1000){
-      run_flag=1;
-      //HAL_TIM_Base_Stop_IT(&htim2);
+    
+    // 等待 1000ms (1秒) 后发车
+    if(run_time > 1000 && run_flag == 0){
+      run_flag = 1;
+      drive_time = 0; // 发车瞬间，清零运行计时器
     }
-		if(run_time>3000){
-			run_flag=2;
-			HAL_TIM_Base_Stop_IT(&htim2);
-		}
+    
+    // 如果已经发车并处于运行状态
+    if(run_flag == 1){
+      drive_time++; // 运行计时累加
+      
+#if ENABLE_AUTO_STOP
+      // 如果启用了自动停车，且运行时间达到了设定值
+      if(drive_time >= AUTO_STOP_TIME_MS){
+        run_flag = 2; // 切换到停车状态
+        HAL_TIM_Base_Stop_IT(&htim2); // 停止定时器
+      }
+#endif
+    }
   }
 }
 
@@ -311,7 +329,20 @@ int main(void)
       update_data();
       parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
     }
-		// else if(run_flag==2) break;//跑1m后停止
+    else if(run_flag == 2){
+      // ========== 自动停车状态 ==========
+      // 强制把 PWM 占空比清零，电机立刻停转
+      TIM1->CCR1 = 0;
+      TIM1->CCR2 = 0;
+      
+      // 把状态切换到 3，防止反复进入此循环
+      run_flag = 3; 
+    }
+    else if(run_flag == 3){
+      // ========== 彻底停车状态 ==========
+      // 小车已完全停下，在这里空转等待即可
+      // 如果需要，可以把单片机的其它外设也关掉以省电
+    }
     // 以下为陀螺仪使用示例
     // dodo_BMI270_get_data();                         // 调用此函数会更新陀螺仪数据
     // gyro_x = BMI270_gyro_transition(BMI270_gyro_x); // 将原始陀螺仪数据转换为物理值，单位为度每秒
@@ -344,8 +375,6 @@ int main(void)
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
-	TIM1->CCR1=0;
-	TIM1->CCR2=0;
   /* USER CODE END 3 */
 }
 
