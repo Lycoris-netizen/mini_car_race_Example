@@ -29,6 +29,7 @@
 #include "motor_control.h"
 #include "PID.h"
 #include "assist_function.h"
+#include "track_logic.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -282,7 +283,10 @@ int main(void)
   Init_brushless_motor(); //等待无刷电调负压启动完成
   /* USER CODE BEGIN 2 */
   dodo_BMI270_init(); // 初始化陀螺仪
-  
+
+  track_init();             // 赛道元素状态机初始化
+  track_calibrate_gyro();   // 静止600ms采陀螺仪零偏（此时车必须不动）
+
   //pwm示例
 	motor_init();
 	//HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
@@ -297,6 +301,19 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  // while(1){
+  //   update_data();
+  //   track_debug_update(mux_value, gyro_z, left_encoder_speed, right_encoder_speed);
+
+  //   /* ===== 在这里打印：50ms 一行 ===== */
+  //   static uint32_t dbg_t = 0U;
+  //   if ((HAL_GetTick() - dbg_t) >= 50U) {
+  //       dbg_t = HAL_GetTick();
+  //       printf("odom=%f,yaw=%f\r\n",dbg_odom,dbg_yaw);      /* 0.1cm */
+
+  //   }
+
+  // }
 
   while(HAL_GPIO_ReadPin(GPIO_RUN_GPIO_Port,GPIO_RUN_Pin)==GPIO_PIN_SET); // 等待按下
   HAL_Delay(20); // 消抖
