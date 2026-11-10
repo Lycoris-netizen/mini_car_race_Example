@@ -54,7 +54,7 @@
  * 顺时针/逆时针切换时只改这一个值，重新编译即可。
  * 逆时针：1；顺时针：2。
  */
-#define RA_FORCE_DIR            2
+#define RA_FORCE_DIR            1
 
 typedef enum {
     TS_NORMAL = 0,

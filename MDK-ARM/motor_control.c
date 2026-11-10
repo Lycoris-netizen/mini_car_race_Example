@@ -29,13 +29,14 @@
 #define SLOW_MS       400U    /* 弯中低速窗口 ms */
 #define BRAKE_SPEED   2.0f    /* 制动目标速度（>0.5 才能允许反向制动） */
 #define SLOW_SPEED    8.0f   /* 弯中目标速度 */
+#define FORCE_SLOW_DIST_CM  9000.0f   /* 0.9m 没触发降速，强制降一次 */
 
 //速度积分限幅
 #define SPEED_I_MAX 2000.0f
 
 //PWM输出限制
-#define PWM_MAX 700
-#define PWM_MIN -700
+#define PWM_MAX 1100
+#define PWM_MIN -1100
 
 float target_speed_now=TARGET_SPEED;
 float weighted_sum=0.0f;
@@ -158,23 +159,30 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     track_update(&in,&out);
 
     /* ===== 入弯前降速 + 前馈制动 =====
-     * 1) 线开始变宽(active>=4)且只有一侧边缘亮时，认为要入弯；
-     * 2) 第一次触发：先给 BRAKE_SPEED 持续 BRAKE_MS（前馈制动），
-     *    让速度环饱和反拖，而不是等反馈误差慢慢建立；
-     * 3) 制动脉冲结束后给 SLOW_SPEED，持续 SLOW_MS（弯中低速）；
-     * 4) 四岔口 active 10~12、左右边缘 3/3，one_side 为假，不降速。
+     * 1) 线变宽(active>=6)且任一侧边缘亮时，认为要入弯；
+     *    十字(3/3, active 10~12)和直角(3/2、3/3, active 6~12)都会触发；
+     * 2) 第一次触发：先给 BRAKE_SPEED 持续 BRAKE_MS；
+     * 3) 之后给 SLOW_SPEED，持续 SLOW_MS；
+     * 4) 直道 active 3~4、45°/60° active 4~5 不触发。
      */
     static uint32_t brake_until = 0U;
     static uint32_t slow_until  = 0U;
     uint32_t slow_now_ms = HAL_GetTick();
     uint8_t brake_active = 0U;
 
-    uint8_t one_side =
-        (in.left3 >= 1U && in.right3 <= 2U) ||
-        (in.right3 >= 1U && in.left3 <= 2U);
+    /* 0.9m 降速看门狗：只在 NORMAL 下累计里程 */
+    static float dist_since_slow_cm = 0.0f;
+    if (out.state != TS_NORMAL) {
+        dist_since_slow_cm = 0.0f;          /* 环岛等状态不计入 */
+    } else {
+        dist_since_slow_cm += in.d_cm;
+        if (dist_since_slow_cm < 0.0f) dist_since_slow_cm = 0.0f;
+    }
 
     if (out.state == TS_NORMAL && out.override == 0U &&
-        in.active >= 4U && in.active <= 9U && one_side) {
+        in.active >= 6U && (in.left3 >= 1U || in.right3 >= 1U)) {
+
+        dist_since_slow_cm = 0.0f;   /* 正常触发降速，清零看门狗 */
 
         if (slow_now_ms >= slow_until) {
             /* 新的一次入弯：只触发一次制动 */
@@ -184,6 +192,15 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
             /* 还在同一个弯里：保持低速窗口，不重复制动 */
             slow_until = slow_now_ms + SLOW_MS;
         }
+    }
+
+    /* 0.9m 没触发降速：强制降一次 */
+    if (out.state == TS_NORMAL && out.override == 0U &&
+        dist_since_slow_cm >= FORCE_SLOW_DIST_CM &&
+        slow_now_ms >= slow_until && slow_now_ms >= brake_until) {
+        brake_until = slow_now_ms + BRAKE_MS;
+        slow_until  = slow_now_ms + SLOW_MS;
+        dist_since_slow_cm = 0.0f;
     }
 
     if (slow_now_ms < brake_until) {
@@ -196,16 +213,13 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     }
 
     //差速选择：
-    //  NORMAL   -> PPDD * 1.5
-    //  RA_RUN   -> PPDD * 1.0
-    //  其它状态 -> 状态机给出的yaw闭环差速
+    //  NORMAL / RA_RUN -> PPDD * 1.5
+    //  其它状态        -> 状态机给出的yaw闭环差速
     float differential_speed;
     if(out.override){
         differential_speed=out.diff;
-    }else if(out.state==TS_NORMAL){
-        differential_speed=base*1.5f;
     }else{
-        differential_speed=base;
+        differential_speed=base*1.5f;
     }
 
     /* 前馈制动期间不打角，先直着把速度刹下来 */
@@ -251,19 +265,20 @@ if ((now_ms - dbg_last) >= 50U) {
     for (i = 0U; i < 12U; i++) {
         bits = (uint16_t)((bits << 1) | (mux_array[i] ? 1U : 0U));
     }
+    printf("%f %u\r\n",line_position,(unsigned)active_count);
 
-    printf("%lu,%u,%u,%d,%d,%d,%d,%d,%d,%d,%03X,%d\r\n",
-           (unsigned long)now_ms,              /* 1 时间 */
-           (unsigned)out.state,                /* 2 状态 0~3 */
-           (unsigned)active_count,             /* 3 亮灯数 */
-           (int)(dbg_edge_rise * 10.0f),       /* 4 rise 0.1cm */
-           (int)dbg_yaw,                       /* 5 航向 */
-           (int)dbg_ra_turned,                 /* 6 环内角度 */
-           (int)dbg_odom,                      /* 7 里程 */
-           (int)(differential_speed * 10.0f),  /* 8 差速 ×10 */
-           (int)left_encoder,                  /* 9 左编码器 */
-           (int)right_encoder,                 /* 10 右编码器 */
-           (unsigned)bits,                     /* 11 12路bit图 */
-           (int)(gyro_z * 10.0f));             /* 12 陀螺仪 ×10 */
+    // printf("%lu,%u,%u,%d,%d,%d,%d,%d,%d,%d,%03X,%d\r\n",
+    //        (unsigned long)now_ms,              /* 1 时间 */
+    //        (unsigned)out.state,                /* 2 状态 0~3 */
+    //        (unsigned)active_count,             /* 3 亮灯数 */
+    //        (int)(dbg_edge_rise * 10.0f),       /* 4 rise 0.1cm */
+    //        (int)dbg_yaw,                       /* 5 航向 */
+    //        (int)dbg_ra_turned,                 /* 6 环内角度 */
+    //        (int)dbg_odom,                      /* 7 里程 */
+    //        (int)(differential_speed * 10.0f),  /* 8 差速 ×10 */
+    //        (int)left_encoder,                  /* 9 左编码器 */
+    //        (int)right_encoder,                 /* 10 右编码器 */
+    //        (unsigned)bits,                     /* 11 12路bit图 */
+    //        (int)(gyro_z * 10.0f));             /* 12 陀螺仪 ×10 */
 }
 }
