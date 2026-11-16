@@ -191,7 +191,7 @@ void Init_brushless_motor(void)
      0.9 ms -> 1.0 ms idle-signal sequence in the background. */
 }
 
-uint8_t control_flag=0;
+volatile uint8_t control_flag=0;
 uint8_t print_flag=0;
 uint16_t mux_value=0;
 int16_t left_encoder_speed,right_encoder_speed;
@@ -218,6 +218,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     // 如果已经发车并处于运行状态
     if(run_flag == 1){
       drive_time++; // 运行计时累加
+      control_flag = 1U;   /* 1ms 控制节拍 */
       
 #if ENABLE_AUTO_STOP
       // 如果启用了自动停车，且运行时间达到了设定值
@@ -343,8 +344,12 @@ int main(void)
   while (1)
   {
     if(run_flag==1){
-      update_data();
-      parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+      if(control_flag){
+        control_flag = 0U;
+        update_data();
+        parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+      }
+      debug_print();
     }
     else if(run_flag == 2){
       // ========== 自动停车状态 ==========

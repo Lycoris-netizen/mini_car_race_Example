@@ -22,14 +22,14 @@
 #define R_SPEED_KD 0.0f
 
 //目标速度
-#define TARGET_SPEED 25.0f
+#define TARGET_SPEED 42.0f
 
 /* 入弯前降速 + 前馈制动参数 */
 #define BRAKE_MS      0U     /* 制动脉冲时间 ms */
 #define SLOW_MS       400U    /* 弯中低速窗口 ms */
 #define BRAKE_SPEED   2.0f    /* 制动目标速度（>0.5 才能允许反向制动） */
-#define SLOW_SPEED    25.0f   /* 弯中目标速度 */
-#define TL_NEG_MAX    4.0f   /* 减速转弯时允许的负内轮限幅 */
+#define SLOW_SPEED    42.0f   /* 弯中目标速度 */
+#define TL_NEG_MAX    6.0f   /* 允许的负内轮限幅（全局） */
 
 //速度积分限幅
 #define SPEED_I_MAX 2000.0f
@@ -140,8 +140,9 @@ float calculate_line_position(uint16_t mux_value){
         float p = last_valid_pos;
         if(p < 0.0f) p = -p;
 
-        if(last_valid_active <= 3U && p <= 0.5f){
-            return 0.1f;
+        if((last_valid_active <= 3U && p <= 0.5f) ||
+           (last_valid_active == 4U && p <= 0.001f)){
+            return 0.17f;
         }
         return last_position_error;
     }
@@ -206,16 +207,25 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     }
 
     /* 指定里程段限速：470~640 时目标速度 22 */
-    if (dbg_odom >= 470.0f && dbg_odom <= 640.0f) {
-        target_speed_now = 22.0f;
-    }
+//    if ((dbg_odom >= 470.0f && dbg_odom <= 600.0f) ||
+//        (dbg_odom >= 3420.0f && dbg_odom <= 3550.0f) ||
+//        (dbg_odom >= 2160.0f && dbg_odom <= 2300.0f) ||
+//        dbg_odom >= 5110.0f && dbg_odom <= 5250.0f) {
+//        target_speed_now = 35.0f;
+//    }
 
-    /* 指定里程段限速：2600~2800、5520~5750 时目标速度 17 */
-    if ((dbg_odom >= 2600.0f && dbg_odom <= 2800.0f) ||
-        (dbg_odom >= 5520.0f && dbg_odom <= 5750.0f)) {
-        target_speed_now = 17.0f;
+//    /* 指定里程段限速：2675~2800、5625~5750 时目标速度 17 */
+//    if ((dbg_odom >= 2645.0f && dbg_odom <= 2820.0f) ||
+//        (dbg_odom >= 5595.0f && dbg_odom <= 5770.0f)) {
+//        target_speed_now = 32.0f;
+//    }
+		
+		if ((dbg_odom >= 2645.0f && dbg_odom <= 2820.0f) ||
+        (dbg_odom >= 5595.0f && dbg_odom <= 5770.0f) ||
+        (dbg_odom >= 2180.0f && dbg_odom <= 2260.0f) ||
+         dbg_odom >= 5130.0f && dbg_odom <= 5210.0f) {
+        target_speed_now = 27.0f;
     }
-
     //差速选择：
     //  NORMAL / RA_RUN -> PPDD * 1.5
     //  其它状态        -> 状态机给出的yaw闭环差速
@@ -234,18 +244,11 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     debug1 = target_speed_now;
     debug2 = differential_speed;
 
-    /* 减速转弯时允许适度负内轮：只在 slow/brake 窗口内 */
-    uint8_t allow_neg = (slow_now_ms < slow_until || brake_active) ? 1U : 0U;
-    float neg_max = allow_neg ? TL_NEG_MAX : 0.0f;
-
+    /* 全局允许适度负内轮（不再限制在 slow/brake 窗口） */
     float tl = target_speed_now - differential_speed;
     float tr = target_speed_now + differential_speed;
-    if (tl < -neg_max) tl = -neg_max;
-    if (tr < -neg_max) tr = -neg_max;
-    if (!allow_neg) {
-        if (tl < 0.0f) tl = 0.0f;
-        if (tr < 0.0f) tr = 0.0f;
-    }
+    if (tl < -TL_NEG_MAX) tl = -TL_NEG_MAX;
+    if (tr < -TL_NEG_MAX) tr = -TL_NEG_MAX;
     motor_left.target_speed = tl;
     motor_right.target_speed = tr;
 
@@ -265,36 +268,21 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     motor_right.pwm_output = (int16_t)pwm_r;
     setPWM(motor_left);
     setPWM(motor_right);
-    /* ===== 调试打印：50ms 一行 ===== */
-static uint32_t dbg_last = 0U;
-uint32_t now_ms = HAL_GetTick();
+}
 
-if ((now_ms - dbg_last) >= 50U) {
-    uint16_t bits = 0U;
-    uint8_t  i;
-    dbg_last = now_ms;
+void debug_print(void)
+{
+    static uint32_t last = 0U;
+    uint32_t now = HAL_GetTick();
 
-    for (i = 0U; i < 12U; i++) {
-        bits = (uint16_t)((bits << 1) | (mux_array[i] ? 1U : 0U));
+    if ((now - last) < 50U) {
+        return;
     }
+    last = now;
+
     printf("%d,%d,%u,%.2f\r\n",
            (int)dbg_odom,
            (int)(dbg_edge_rise * 10.0f),
-           (unsigned)out.state,
+           (unsigned)dbg_state,
            dbg_ra_turned);
-
-    // printf("%lu,%u,%u,%d,%d,%d,%d,%d,%d,%d,%03X,%d\r\n",
-    //        (unsigned long)now_ms,              /* 1 时间 */
-    //        (unsigned)out.state,                /* 2 状态 0~3 */
-    //        (unsigned)active_count,             /* 3 亮灯数 */
-    //        (int)(dbg_edge_rise * 10.0f),       /* 4 rise 0.1cm */
-    //        (int)dbg_yaw,                       /* 5 航向 */
-    //        (int)dbg_ra_turned,                 /* 6 环内角度 */
-    //        (int)dbg_odom,                      /* 7 里程 */
-    //        (int)(differential_speed * 10.0f),  /* 8 差速 ×10 */
-    //        (int)left_encoder,                  /* 9 左编码器 */
-    //        (int)right_encoder,                 /* 10 右编码器 */
-    //        (unsigned)bits,                     /* 11 12路bit图 */
-    //        (int)(gyro_z * 10.0f));             /* 12 陀螺仪 ×10 */
-}
 }

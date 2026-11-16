@@ -51,7 +51,8 @@ static uint32_t s_zero_t0;
 static uint32_t s_cooldown_until;   /* 出环冷却结束时刻 */
 
 static uint8_t  s_feat_dir;     /* 0=无 1=左 2=右；环岛候选方向 */
-static uint32_t s_feat_t0;
+static float    s_feat_cm;      /* 候选特征已持续的里程 */
+static uint32_t s_feat_lost_t0; /* 最后一次满足特征的时刻 */
 
 static uint8_t  s_ra_dir;
 static float    s_ra_entry_heading;
@@ -79,7 +80,8 @@ void track_init(void)
     s_cooldown_until = 0U;
 
     s_feat_dir = 0U;
-    s_feat_t0 = 0U;
+    s_feat_cm = 0.0f;
+    s_feat_lost_t0 = 0U;
 
     s_ra_dir = 0U;
     s_ra_entry_heading = 0.0f;
@@ -219,13 +221,23 @@ void track_update(const track_input_t *in, track_output_t *out)
         if (dir != 0U) {
             if (dir != s_feat_dir) {
                 s_feat_dir = dir;
-                s_feat_t0   = now;
-            } else if ((now - s_feat_t0) >= TL_FEATURE_CONFIRM_MS) {
-                tl_start_ra(dir, now);
-                s_feat_dir = 0U;
+                s_feat_cm   = 0.0f;
+            } else {
+                s_feat_cm += in->d_cm;
+                if (s_feat_cm >= TL_FEATURE_CONFIRM_CM) {
+                    tl_start_ra(dir, now);
+                    s_feat_dir = 0U;
+                    s_feat_cm = 0.0f;
+                }
             }
+            s_feat_lost_t0 = now;
         } else {
-            s_feat_dir = 0U;
+            /* 允许短暂丢失，超过 TL_FEATURE_GAP_MS 才清零 */
+            if (s_feat_dir != 0U &&
+                (now - s_feat_lost_t0) > TL_FEATURE_GAP_MS) {
+                s_feat_dir = 0U;
+                s_feat_cm = 0.0f;
+            }
         }
 
         if (s_state == TS_NORMAL) {

@@ -31,21 +31,22 @@
 /* 只判“慢上升”。0.1m线宽、直道3~4路时：
  *   90°直角 ≈0cm，45°/60° ≈3~6cm，30°岔口 ≈10cm。
  * 先设7.0，实测后放在45°/60°和30°岔口之间。 */
-#define TL_EDGE_SLOW_CM         2.5f
-#define TL_FEATURE_CONFIRM_MS   4
+#define TL_EDGE_SLOW_CM         2.0f
+#define TL_FEATURE_CONFIRM_CM   0.0f   /* 0 = 不要求持续里程，只用时间确认 */
+#define TL_FEATURE_GAP_MS       5      /* 特征短暂丢失容忍 */
 
 /* ================= 环岛 ================= */
 #define TL_RA_ENTRY_DEG         33.0f   /* 六边形上顶点支线约30° */
 #define TL_RA_ENTRY_KP          0.22f
 #define TL_RA_ENTRY_DIFF_MAX    12.0f
-#define TL_RA_ENTRY_TIMEOUT_MS  600
+#define TL_RA_ENTRY_TIMEOUT_MS  200
 
 #define TL_RA_EXIT_YAW_DEG      330.0f  /* 一圈360°，提前30°回正 */
 #define TL_RA_INNER_DETECT_DEG  295.0f  /* 净角下降超过此值，认为进入内环 */
 #define TL_RA_INNER_END_DEG      5.0f   /* 净角从最低点回升超过此值，认为内环结束 */
 #define TL_RA_EXIT_KP           0.22f
 #define TL_RA_EXIT_DIFF_MAX     12.0f
-#define TL_RA_EXIT_TIMEOUT_MS   600
+#define TL_RA_EXIT_TIMEOUT_MS   250
 #define TL_RA_COOLDOWN_MS       1000U   /* 出环后 1s 内禁止再次入环 */
 
 /* ================= 环岛入环方向 =================

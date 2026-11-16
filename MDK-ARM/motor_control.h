@@ -27,6 +27,7 @@ void setPWM(motor_t motor);
 void stopPWM(motor_t motor);
 float calculate_line_position(uint16_t mux_value);
 void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,float right_encoder);
+void debug_print(void);
 void track_debug_update(uint16_t mux_value, float gyro_z,float left_encoder, float right_encoder);
 
 extern uint8_t flag;
