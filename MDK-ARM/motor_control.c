@@ -22,13 +22,13 @@
 #define R_SPEED_KD 0.0f
 
 //目标速度
-#define TARGET_SPEED 35.0f
+#define TARGET_SPEED 40.0f
 
 /* 入弯前降速 + 前馈制动参数 */
 #define BRAKE_MS      0U     /* 制动脉冲时间 ms */
 #define SLOW_MS       400U    /* 弯中低速窗口 ms */
 #define BRAKE_SPEED   2.0f    /* 制动目标速度（>0.5 才能允许反向制动） */
-#define SLOW_SPEED    35.0f   /* 弯中目标速度 */
+#define SLOW_SPEED    40.0f   /* 弯中目标速度 */
 #define TL_NEG_MAX    4.0f   /* 减速转弯时允许的负内轮限幅 */
 
 //速度积分限幅

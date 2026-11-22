@@ -74,7 +74,7 @@
 /* ================= 断路（保持直行） ================= */
 #define TL_GAP_POS              1.0f    /* 丢线前 |line_pos| <= 此值，认为断路 */
 #define TL_GAP_LOST_MS          15U     /* active==0 持续多久触发 */
-#define TL_GAP_TURN_DEG         (-35.0f) /* 断路后右转35°；正=左，负=右 */
+#define TL_GAP_TURN_DEG         (-30.0f) /* 断路后右转35°；正=左，负=右 */ /*1号图-35 2号图-30*/
 #define TL_GAP_KP               0.22f
 #define TL_GAP_DIFF_MAX         12.0f
 #define TL_GAP_TIMEOUT_MS       3000U   /* 断路保持最长时间 */
