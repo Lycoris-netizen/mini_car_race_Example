@@ -44,7 +44,7 @@
    平时保持 0；要串口看数据时改成 1（并注意镜像大小）。 */
 
 #define GYRO_DEBUG 0
-#define IF_start_Brushless_motor 0 //是否启动无刷电机，1为启动，0为不启动
+#define IF_start_Brushless_motor 1 //是否启动无刷电机，1为启动，0为不启动
 
 /* ========== 自动停车配置 ========== */
 #define ENABLE_AUTO_STOP     0     // 1 为启用自动停车，0 为不启用（一直跑）

@@ -58,7 +58,7 @@
 #define TL_RA_EXIT_SPEED_MS_SMALL 800U /* 小环出环后保持多久 */
 #define TL_RA_EXIT_SPEED_MS_BIG    800U /* 大环出环后保持多久 */
 #define TL_RA_4S_MS             3400U   /* 入环 3.4s 未出环 */
-#define TL_RA_4S_SLOW_MS        1000U   /* 超时后减速持续 1s */
+#define TL_RA_4S_SLOW_MS        1500U   /* 超时后减速持续 1.5s */
 
 /* ================= 直角（丢线转弯） ================= */
 #define TL_CORNER_ARM_POS       3.0f    /* |line_pos| >= 此值，预判直角 */

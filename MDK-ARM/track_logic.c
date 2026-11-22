@@ -86,8 +86,8 @@ typedef struct {
 } odom_window_t;
 
 static const odom_window_t s_gap_windows[] = {
-    { 1190.0f, 1280.0f },   /* 第一处断路 */
-    { 4250.0f, 4330.0f },   /* 第二处断路 */
+    { 1150.0f, 1240.0f },   /* 第一处断路 */
+    { 4117.0f, 4197.0f },   /* 第二处断路 */
 };
 
 #define GAP_WINDOW_COUNT (sizeof(s_gap_windows) / sizeof(s_gap_windows[0]))
