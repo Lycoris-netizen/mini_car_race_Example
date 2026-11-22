@@ -50,7 +50,7 @@
 #define TL_RA_EXIT_TIMEOUT_MS   600
 #define TL_RA_RUN_TIMEOUT_MS    4600U   /* 环内 5s 未出环：直接回 NORMAL，不打角 */
 #define TL_RA_MIN_RUN_MS        1000U   /* 入环后至少 1s 才允许出环判定 */
-#define TL_RA_COOLDOWN_MS       6000U   /* 出环后 1s 内禁止再次入环 */
+#define TL_RA_COOLDOWN_MS       9000U   /* 入环后 9s 内禁止再次入环 */
 #define TL_RA_ENTRY_SPEED       20.0f   /* 判定入环后的目标速度 */
 #define TL_RA_ENTRY_SPEED_MS_SMALL 800U /* 小环入环后保持多久 */
 #define TL_RA_ENTRY_SPEED_MS_BIG   800U /* 大环入环后保持多久 */

@@ -72,6 +72,7 @@ static float    s_corner_target;    /* 本次直角目标航向 */
 static uint8_t  s_corner_lost;      /* 当前是否丢线 */
 static uint32_t s_corner_lost_t0;
 static uint32_t s_corner_t0;
+static track_state_t s_corner_return_state;  /* 直角结束后回到哪个状态 */
 
 /* 断路（保持直行） */
 static uint8_t  s_gap_lost;
@@ -87,7 +88,7 @@ typedef struct {
 
 static const odom_window_t s_gap_windows[] = {
     { 1150.0f, 1240.0f },   /* 第一处断路 */
-    { 4117.0f, 4197.0f },   /* 第二处断路 */
+    { 4065.0f, 4145.0f },   /* 第二处断路 */
 };
 
 #define GAP_WINDOW_COUNT (sizeof(s_gap_windows) / sizeof(s_gap_windows[0]))
@@ -142,6 +143,7 @@ void track_init(void)
     s_corner_lost = 0U;
     s_corner_lost_t0 = 0U;
     s_corner_t0 = 0U;
+    s_corner_return_state = TS_NORMAL;
 
     s_gap_lost = 0U;
     s_gap_lost_t0 = 0U;
@@ -217,10 +219,30 @@ static void tl_start_ra(uint8_t dir, uint32_t now)
     s_ra_inner_min = 0.0f;
     s_ra_exit_offset = TL_RA_EXIT_OFFSET_SMALL_DEG;
     s_ra_start_t0 = now;
+    s_cooldown_until = now + TL_RA_COOLDOWN_MS;   /* 入环后 6s 内禁止再次入环 */
     dbg_ra_turned = 0.0f;   /* 新环岛从 0 开始打印 */
     s_ra_t0 = now;
     s_state = TS_RA_ENTRY;
     s_armed = 0U;
+}
+
+/* 尝试进入直角；任何状态都可以调用 */
+static uint8_t tl_try_corner(uint32_t now)
+{
+    if (s_corner_armed && s_corner_lost && s_corner_last_sign != 0 &&
+        (now - s_corner_lost_t0) >= TL_CORNER_LOST_MS) {
+
+        s_corner_dir = s_corner_last_sign;
+        s_corner_target = s_yaw +
+                          (float)s_corner_dir * TL_CORNER_TURN_DEG;
+        s_corner_t0 = now;
+        s_corner_armed = 0U;
+        s_corner_lost = 0U;
+        s_corner_return_state = s_state;
+        s_state = TS_CORNER;
+        return 1U;
+    }
+    return 0U;
 }
 
 /* ---------------- 主更新 ---------------- */
@@ -252,6 +274,24 @@ void track_update(const track_input_t *in, track_output_t *out)
         }
     } else {
         s_zero_active = 0U;
+    }
+
+    /* 直角预判：所有状态都更新，允许环岛内也触发 */
+    if (in->line_pos > 0.5f)       s_corner_last_sign = -1;
+    else if (in->line_pos < -0.5f) s_corner_last_sign = +1;
+
+    if (tl_abs(in->line_pos) >= TL_CORNER_ARM_POS ||
+        in->left3 == 3U || in->right3 == 3U) {
+        s_corner_armed = 1U;
+    }
+
+    if (in->active == 0U) {
+        if (!s_corner_lost) {
+            s_corner_lost = 1U;
+            s_corner_lost_t0 = now;
+        }
+    } else {
+        s_corner_lost = 0U;
     }
 
     out->override = 1U;
@@ -329,17 +369,9 @@ void track_update(const track_input_t *in, track_output_t *out)
             s_state = TS_GAP;
         }
 
-        /* ---- 直角触发：丢线 + 预判 + 方向已知 ---- */
-        if (s_state == TS_NORMAL &&
-            s_corner_armed && s_corner_lost && s_corner_last_sign != 0 &&
-            (now - s_corner_lost_t0) >= TL_CORNER_LOST_MS) {
-            s_corner_dir = s_corner_last_sign;
-            s_corner_target = s_yaw +
-                              (float)s_corner_dir * TL_CORNER_TURN_DEG;
-            s_corner_t0 = now;
-            s_corner_armed = 0U;
-            s_corner_lost = 0U;
-            s_state = TS_CORNER;
+        /* ---- 直角触发：NORMAL 里也允许 ---- */
+        if (s_state == TS_NORMAL) {
+            (void)tl_try_corner(now);
         }
 
         if (s_state == TS_NORMAL) {
@@ -365,6 +397,11 @@ void track_update(const track_input_t *in, track_output_t *out)
     }
 
     case TS_RA_RUN: {
+        /* 环岛内也允许触发直角；结束后回到 RA_RUN */
+        if (tl_try_corner(now)) {
+            break;
+        }
+
         /* 净转角 + 内环补偿：内环结束再补实际下降量 */
         float net = tl_dir_sign(s_ra_dir) * (s_yaw - s_ra_entry_heading);
 
@@ -416,7 +453,6 @@ void track_update(const track_input_t *in, track_output_t *out)
             (now - s_ra_t0) > TL_RA_EXIT_TIMEOUT_MS) {
             s_state = TS_NORMAL;
             s_armed = 0U;
-            s_cooldown_until = now + TL_RA_COOLDOWN_MS;
         }
         break;
     }
@@ -430,7 +466,7 @@ void track_update(const track_input_t *in, track_output_t *out)
         if (tl_abs(err) <= TL_CORNER_TOL_DEG ||
             in->active >= 2U ||
             (now - s_corner_t0) > TL_CORNER_TIMEOUT_MS) {
-            s_state = TS_NORMAL;
+            s_state = s_corner_return_state;
             out->override = 0U;
             s_corner_armed = 0U;
             s_corner_lost = 0U;

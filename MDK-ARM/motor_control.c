@@ -282,7 +282,7 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
         target_speed_now = TL_GAP_SPEED;
     }
 
-    /* 判定入环后：20；小环 0.8s，大环 1.2s，然后回 TARGET_SPEED */
+    /* 判定入环后：20；小环 0.8s，大环 0.8s，然后回 TARGET_SPEED */
     static uint8_t  ra_speed_active = 0U;
     static uint32_t ra_speed_t0 = 0U;
     static uint32_t ra_entry_t0 = 0U;
@@ -309,7 +309,7 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
         }
     }
 
-    /* 入环 4s 还没出环：20，持续 1s */
+    /* 入环 3.4s 还没出环：20，持续 1.5s */
     if (out.state >= TS_RA_ENTRY && out.state <= TS_RA_EXIT) {
         if (!ra_4s_done &&
             (slow_now_ms - ra_entry_t0) >= TL_RA_4S_MS) {
@@ -323,7 +323,7 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
         target_speed_now = TL_RA_ENTRY_SPEED;
     }
 
-    /* 判定出环后：20；小环 1.5s，大环 0.8s，然后回 TARGET_SPEED */
+    /* 判定出环后：20；小环 0.8s，大环 0.8s，然后回 TARGET_SPEED */
     static uint8_t  ra_exit_speed_active = 0U;
     static uint32_t ra_exit_speed_t0 = 0U;
     static uint32_t ra_exit_ms = TL_RA_EXIT_SPEED_MS_SMALL;

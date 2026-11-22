@@ -346,8 +346,8 @@ int main(void)
       update_data();
       parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
 
-      /* 里程到 6160 停车 */
-      if(dbg_odom >= 6160.0f){
+      /* 里程到 5875 停车 */
+      if(dbg_odom >= 5875.0f){
           run_flag = 2;
       }
     }
