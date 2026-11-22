@@ -45,12 +45,40 @@
 #define TL_RA_INNER_END_DEG      5.0f   /* 净角从最低点回升超过此值，认为内环结束 */
 #define TL_RA_EXIT_KP           0.22f
 #define TL_RA_EXIT_DIFF_MAX     12.0f
-#define TL_RA_EXIT_OFFSET_SMALL_DEG  (-8.0f)   /* 小环出环：右8° */
+#define TL_RA_EXIT_OFFSET_SMALL_DEG  (0.0f)    /* 小环出环：不偏移 */
 #define TL_RA_EXIT_OFFSET_BIG_DEG    (-25.0f)  /* 大环出环：右25° */
 #define TL_RA_EXIT_TIMEOUT_MS   600
 #define TL_RA_RUN_TIMEOUT_MS    4600U   /* 环内 5s 未出环：直接回 NORMAL，不打角 */
 #define TL_RA_MIN_RUN_MS        1000U   /* 入环后至少 1s 才允许出环判定 */
 #define TL_RA_COOLDOWN_MS       6000U   /* 出环后 1s 内禁止再次入环 */
+#define TL_RA_ENTRY_SPEED       20.0f   /* 判定入环后的目标速度 */
+#define TL_RA_ENTRY_SPEED_MS_SMALL 800U /* 小环入环后保持多久 */
+#define TL_RA_ENTRY_SPEED_MS_BIG   800U /* 大环入环后保持多久 */
+#define TL_RA_EXIT_SPEED        20.0f   /* 出环后的目标速度 */
+#define TL_RA_EXIT_SPEED_MS_SMALL 800U /* 小环出环后保持多久 */
+#define TL_RA_EXIT_SPEED_MS_BIG    800U /* 大环出环后保持多久 */
+#define TL_RA_4S_MS             3400U   /* 入环 3.4s 未出环 */
+#define TL_RA_4S_SLOW_MS        1000U   /* 超时后减速持续 1s */
+
+/* ================= 直角（丢线转弯） ================= */
+#define TL_CORNER_ARM_POS       3.0f    /* |line_pos| >= 此值，预判直角 */
+#define TL_CORNER_LOST_MS       15U     /* active==0 持续多久触发 */
+#define TL_CORNER_TURN_DEG      90.0f   /* 目标转角 */
+#define TL_CORNER_KP            0.50f
+#define TL_CORNER_DIFF_MAX      40.0f
+#define TL_CORNER_NEG_MAX       10.0f   /* 直角状态允许的负内轮 */
+#define TL_CORNER_TOL_DEG       4.0f
+#define TL_CORNER_TIMEOUT_MS    600U
+#define TL_CORNER_SPEED         10.0f   /* 直角中的目标速度 */
+
+/* ================= 断路（保持直行） ================= */
+#define TL_GAP_POS              1.0f    /* 丢线前 |line_pos| <= 此值，认为断路 */
+#define TL_GAP_LOST_MS          15U     /* active==0 持续多久触发 */
+#define TL_GAP_TURN_DEG         (-35.0f) /* 断路后右转35°；正=左，负=右 */
+#define TL_GAP_KP               0.22f
+#define TL_GAP_DIFF_MAX         12.0f
+#define TL_GAP_TIMEOUT_MS       3000U   /* 断路保持最长时间 */
+#define TL_GAP_SPEED            35.0f   /* 断路区域目标速度 */
 
 /* ================= 环岛入环方向 =================
  * 1 = 左入环（逆时针跑）
@@ -66,7 +94,9 @@ typedef enum {
     TS_NORMAL = 0,
     TS_RA_ENTRY,
     TS_RA_RUN,
-    TS_RA_EXIT
+    TS_RA_EXIT,
+    TS_CORNER,
+    TS_GAP
 } track_state_t;
 
 typedef struct {
@@ -82,6 +112,7 @@ typedef struct {
     float   diff;       /* 差速指令 */
     uint8_t override;   /* 1=用diff，0=用PPDD */
     uint8_t state;      /* 当前状态，供调试 */
+    uint8_t ra_index;   /* 第几次环岛：1=小环，2=大环 */
 } track_output_t;
 
 /* 调试变量，Keil Watch 直接看 */

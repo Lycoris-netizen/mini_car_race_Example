@@ -54,6 +54,7 @@ static uint8_t  s_feat_dir;     /* 0=无 1=左 2=右；环岛候选方向 */
 static uint32_t s_feat_t0;
 
 static uint8_t  s_ra_dir;
+static uint8_t  s_ra_count;         /* 第几次环岛：1=小环，2=大环 */
 static float    s_ra_entry_heading;
 static float    s_ra_net_max;
 static float    s_ra_comp;
@@ -62,6 +63,46 @@ static float    s_ra_inner_min;
 static float    s_ra_exit_offset;   /* 本次环岛的出环偏移 */
 static uint32_t s_ra_start_t0;      /* 入环触发时刻 */
 static uint32_t s_ra_t0;
+
+/* 直角（丢线转弯） */
+static uint8_t  s_corner_armed;     /* 线到过边缘，允许直角触发 */
+static int8_t   s_corner_last_sign; /* 最后一次非零偏移的方向 */
+static int8_t   s_corner_dir;       /* 本次直角转向 */
+static float    s_corner_target;    /* 本次直角目标航向 */
+static uint8_t  s_corner_lost;      /* 当前是否丢线 */
+static uint32_t s_corner_lost_t0;
+static uint32_t s_corner_t0;
+
+/* 断路（保持直行） */
+static uint8_t  s_gap_lost;
+static uint32_t s_gap_lost_t0;
+static float    s_gap_heading;
+static uint32_t s_gap_t0;
+
+/* 断路允许的里程窗口（按实测调整） */
+typedef struct {
+    float start_cm;
+    float end_cm;
+} odom_window_t;
+
+static const odom_window_t s_gap_windows[] = {
+    { 1190.0f, 1280.0f },   /* 第一处断路 */
+    { 4250.0f, 4330.0f },   /* 第二处断路 */
+};
+
+#define GAP_WINDOW_COUNT (sizeof(s_gap_windows) / sizeof(s_gap_windows[0]))
+
+static uint8_t tl_in_gap_window(float odom)
+{
+    uint8_t i;
+    for (i = 0U; i < GAP_WINDOW_COUNT; i++) {
+        if (odom >= s_gap_windows[i].start_cm &&
+            odom <= s_gap_windows[i].end_cm) {
+            return 1U;
+        }
+    }
+    return 0U;
+}
 
 /* ---------------- 初始化 / 陀螺仪零偏 ---------------- */
 void track_init(void)
@@ -84,6 +125,7 @@ void track_init(void)
     s_feat_t0 = 0U;
 
     s_ra_dir = 0U;
+    s_ra_count = 0U;
     s_ra_entry_heading = 0.0f;
     s_ra_net_max = 0.0f;
     s_ra_comp = 0.0f;
@@ -92,6 +134,19 @@ void track_init(void)
     s_ra_exit_offset = TL_RA_EXIT_OFFSET_SMALL_DEG;
     s_ra_start_t0 = 0U;
     s_ra_t0 = 0U;
+
+    s_corner_armed = 0U;
+    s_corner_last_sign = 0;
+    s_corner_dir = 0;
+    s_corner_target = 0.0f;
+    s_corner_lost = 0U;
+    s_corner_lost_t0 = 0U;
+    s_corner_t0 = 0U;
+
+    s_gap_lost = 0U;
+    s_gap_lost_t0 = 0U;
+    s_gap_heading = 0.0f;
+    s_gap_t0 = 0U;
 
     dbg_state = 0U;
     dbg_yaw = 0.0f;
@@ -154,6 +209,7 @@ static void tl_start_ra(uint8_t dir, uint32_t now)
 #endif
     dbg_ra_dir = dir;
     s_ra_dir = dir;
+    s_ra_count++;
     s_ra_entry_heading = s_yaw;
     s_ra_net_max = 0.0f;
     s_ra_comp = 0.0f;
@@ -204,6 +260,34 @@ void track_update(const track_input_t *in, track_output_t *out)
     switch (s_state) {
 
     case TS_NORMAL: {
+        /* ---- 直角预判 ---- */
+        if (in->line_pos > 0.5f)       s_corner_last_sign = -1;  /* 线在右 → 右转 */
+        else if (in->line_pos < -0.5f) s_corner_last_sign = +1;  /* 线在左 → 左转 */
+
+        if ((tl_abs(in->line_pos) >= TL_CORNER_ARM_POS ||
+             in->left3 == 3U || in->right3 == 3U)) {
+            s_corner_armed = 1U;
+        }
+
+        if (in->active == 0U) {
+            if (!s_corner_lost) {
+                s_corner_lost = 1U;
+                s_corner_lost_t0 = now;
+            }
+        } else {
+            s_corner_lost = 0U;
+        }
+
+        /* ---- 断路计时 ---- */
+        if (in->active == 0U) {
+            if (!s_gap_lost) {
+                s_gap_lost = 1U;
+                s_gap_lost_t0 = now;
+            }
+        } else {
+            s_gap_lost = 0U;
+        }
+
         /* 单侧边缘3路全亮，另一侧最多1路（排除四岔口3/3） */
         uint8_t one_sided = 0U;
         if (in->left3 == 3U && in->right3 <= 2U)       one_sided = 1U;
@@ -232,6 +316,30 @@ void track_update(const track_input_t *in, track_output_t *out)
             }
         } else {
             s_feat_dir = 0U;
+        }
+
+        /* ---- 断路触发：丢线 + 最后位置在中间 + 里程窗口 ---- */
+        if (s_state == TS_NORMAL && s_gap_lost &&
+            (now - s_gap_lost_t0) >= TL_GAP_LOST_MS &&
+            tl_in_gap_window(s_odom_cm) &&
+            tl_abs(in->line_pos) <= TL_GAP_POS) {
+            s_gap_heading = s_yaw;
+            s_gap_t0 = now;
+            s_gap_lost = 0U;
+            s_state = TS_GAP;
+        }
+
+        /* ---- 直角触发：丢线 + 预判 + 方向已知 ---- */
+        if (s_state == TS_NORMAL &&
+            s_corner_armed && s_corner_lost && s_corner_last_sign != 0 &&
+            (now - s_corner_lost_t0) >= TL_CORNER_LOST_MS) {
+            s_corner_dir = s_corner_last_sign;
+            s_corner_target = s_yaw +
+                              (float)s_corner_dir * TL_CORNER_TURN_DEG;
+            s_corner_t0 = now;
+            s_corner_armed = 0U;
+            s_corner_lost = 0U;
+            s_state = TS_CORNER;
         }
 
         if (s_state == TS_NORMAL) {
@@ -313,6 +421,38 @@ void track_update(const track_input_t *in, track_output_t *out)
         break;
     }
 
+    case TS_CORNER: {
+        float err = tl_ang_diff(s_corner_target, s_yaw);
+
+        out->diff = tl_clamp(TL_CORNER_KP * err,
+                             -TL_CORNER_DIFF_MAX, TL_CORNER_DIFF_MAX);
+
+        if (tl_abs(err) <= TL_CORNER_TOL_DEG ||
+            in->active >= 2U ||
+            (now - s_corner_t0) > TL_CORNER_TIMEOUT_MS) {
+            s_state = TS_NORMAL;
+            out->override = 0U;
+            s_corner_armed = 0U;
+            s_corner_lost = 0U;
+        }
+        break;
+    }
+
+    case TS_GAP: {
+        float err = tl_ang_diff(s_gap_heading + TL_GAP_TURN_DEG, s_yaw);
+
+        out->diff = tl_clamp(TL_GAP_KP * err,
+                             -TL_GAP_DIFF_MAX, TL_GAP_DIFF_MAX);
+
+        if (in->active >= 2U ||
+            (now - s_gap_t0) > TL_GAP_TIMEOUT_MS) {
+            s_state = TS_NORMAL;
+            out->override = 0U;
+            s_gap_lost = 0U;
+        }
+        break;
+    }
+
     default:
         s_state = TS_NORMAL;
         out->override = 0U;
@@ -320,5 +460,6 @@ void track_update(const track_input_t *in, track_output_t *out)
     }
 
     out->state = (uint8_t)s_state;
+    out->ra_index = s_ra_count;
     dbg_state = (uint8_t)s_state;
 }

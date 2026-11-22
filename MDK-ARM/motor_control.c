@@ -22,13 +22,13 @@
 #define R_SPEED_KD 0.0f
 
 //目标速度
-#define TARGET_SPEED 20.0f
+#define TARGET_SPEED 35.0f
 
 /* 入弯前降速 + 前馈制动参数 */
 #define BRAKE_MS      0U     /* 制动脉冲时间 ms */
 #define SLOW_MS       400U    /* 弯中低速窗口 ms */
 #define BRAKE_SPEED   2.0f    /* 制动目标速度（>0.5 才能允许反向制动） */
-#define SLOW_SPEED    20.0f   /* 弯中目标速度 */
+#define SLOW_SPEED    35.0f   /* 弯中目标速度 */
 #define TL_NEG_MAX    4.0f   /* 减速转弯时允许的负内轮限幅 */
 
 //速度积分限幅
@@ -123,9 +123,6 @@ void stopPWM(motor_t motor){
 
 //计算光电管中心位置偏差
 float calculate_line_position(uint16_t mux_value){
-    static uint8_t  last_valid_active = 0U;
-    static float    last_valid_pos    = 0.0f;
-
     weighted_sum=0.0f;
     active_count=0;
     for(uint8_t i=0;i<12;i++){
@@ -136,20 +133,10 @@ float calculate_line_position(uint16_t mux_value){
         }
     }
     if(active_count==0){
-        /* 丢线：上次 active<=3 且 |偏移|<=0.5，或 active==4 且居中 */
-        float p = last_valid_pos;
-        if(p < 0.0f) p = -p;
-
-        if((last_valid_active <= 3U && p <= 0.5f) ||
-           (last_valid_active == 4U && p <= 0.001f)){
-            return 0.20f;//1号图设为0.22 2号图设为0.19 3号图设为0.20
-        }
         return last_position_error;
     }
 
-    last_valid_active = active_count;
-    last_valid_pos = weighted_sum/active_count;
-    return last_valid_pos;
+    return weighted_sum / (float)active_count;
 }
 
 //并联PID控制主函数
@@ -207,45 +194,45 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     }
 
     /* 指定里程段限速：470~640 时目标速度 22 */
-		if (dbg_odom >= 1901.0f && dbg_odom <= 2093.0f) {//60度环入口
-        target_speed_now = 35.0f;
-    }
-		if (dbg_odom >= 4841.0f && dbg_odom <= 5030.0f) {//60度环入口
-        target_speed_now = 35.0f;
-    }
-		if (dbg_odom >= 2888.0f && dbg_odom <= 2975.0f) {//发车点
-        target_speed_now = 40.0f;
-    }
-		if (dbg_odom >= -46 && dbg_odom <= 30.0f) {//发车点
-        target_speed_now = 40.0f;
-    }
-		if (dbg_odom >= 730.0f && dbg_odom <= 1060.0f) {//长弯道
-        target_speed_now = 35.0f;
-    }
-		if (dbg_odom >= 3690.0f && dbg_odom <= 4010.0f) {//长弯道
-        target_speed_now = 35.0f;
-    }
-		
-		if (dbg_odom >= 1140.0f && dbg_odom <= 1315.0f) {//断路2945
-        target_speed_now = 35.0f;
-    }
-		if (dbg_odom >= 4085.0f && dbg_odom <= 4265.0f) {//断路 
-        target_speed_now = 35.0f;
-    }
-		
-		if (dbg_odom >= 1593.0f && dbg_odom <= 1673.0f) {//左侧长直道
-        target_speed_now = 35.0f;
-    }
-		if (dbg_odom >= 4543.0f && dbg_odom <= 4619.0f) {//左侧长直道
-        target_speed_now = 35.0f;
-    }
-		
-		if (dbg_odom >= 2285.0f && dbg_odom <= 2465.0f) {//8字内 
-        target_speed_now = 35.0f;
-    }
-		if (dbg_odom >= 5219.0f && dbg_odom <= 5399.0f) {//8字内
-        target_speed_now = 35.0f;
-    }
+//		if (dbg_odom >= 1901.0f && dbg_odom <= 2093.0f) {//60度环入口
+//        target_speed_now = 35.0f;
+//    }
+//		if (dbg_odom >= 4841.0f && dbg_odom <= 5030.0f) {//60度环入口
+//        target_speed_now = 35.0f;
+//    }
+//		if (dbg_odom >= 2888.0f && dbg_odom <= 2975.0f) {//发车点
+//        target_speed_now = 40.0f;
+//    }
+//		if (dbg_odom >= -46 && dbg_odom <= 30.0f) {//发车点
+//        target_speed_now = 40.0f;
+//    }
+//		if (dbg_odom >= 800.0f && dbg_odom <= 1060.0f) {//长弯道
+//        target_speed_now = 35.0f;
+//    }
+//		if (dbg_odom >= 3760.0f && dbg_odom <= 4010.0f) {//长弯道
+//        target_speed_now = 35.0f;
+//    }
+//		
+//		if (dbg_odom >= 1140.0f && dbg_odom <= 1300.0f) {//断路2945
+//        target_speed_now = 35.0f;
+//    }
+//		if (dbg_odom >= 4085.0f && dbg_odom <= 4255.0f) {//断路 
+//        target_speed_now = 35.0f;
+//    }
+//		
+//		if (dbg_odom >= 1593.0f && dbg_odom <= 1673.0f) {//左侧长直道
+//        target_speed_now = 35.0f;
+//    }
+//		if (dbg_odom >= 4543.0f && dbg_odom <= 4619.0f) {//左侧长直道
+//        target_speed_now = 35.0f;
+//    }
+//		
+//		if (dbg_odom >= 2285.0f && dbg_odom <= 2465.0f) {//8字内 
+//        target_speed_now = 35.0f;
+//    }
+//		if (dbg_odom >= 5219.0f && dbg_odom <= 5399.0f) {//8字内
+//        target_speed_now = 35.0f;
+//    }
     //if (dbg_odom >= 2445.0f && dbg_odom <= 2550.0f) {//环套环出环口
     //    target_speed_now = 30.0f;
     //}
@@ -260,18 +247,18 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     //    target_speed_now = 21.0f;
     //}
 		//下面是直角减速 
-		if (dbg_odom >= 386.0f && dbg_odom <= 441.0f) {
-        target_speed_now = 10.0f;
-    }
-		if (dbg_odom >= 3317.0f && dbg_odom <= 3381.0f) {
-        target_speed_now = 10.0f;
-    }
-		if (dbg_odom >= 1805.0f && dbg_odom <= 1900.0f) {
-        target_speed_now = 10.0f;
-    }
-		if (dbg_odom >= 4762.0f && dbg_odom <= 4840.0f) {//1590 +90
-        target_speed_now = 10.0f;
-    }
+//		if (dbg_odom >= 386.0f && dbg_odom <= 441.0f) {
+//        target_speed_now = 10.0f;
+//    }
+//		if (dbg_odom >= 3317.0f && dbg_odom <= 3381.0f) {
+//        target_speed_now = 10.0f;
+//    }
+//		if (dbg_odom >= 1805.0f && dbg_odom <= 1900.0f) {
+//        target_speed_now = 10.0f;
+//    }
+//		if (dbg_odom >= 4762.0f && dbg_odom <= 4840.0f) {//1590 +90
+//        target_speed_now = 10.0f;
+//    }
 		//if (dbg_odom >= 2150.0f && dbg_odom <= 2300.0f) {
     //    target_speed_now = 20.0f;
     //}
@@ -280,9 +267,82 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     //}
 
     /* 指定里程段限速：2600~2800、5520~5750 时目标速度 17 */
-    if ((dbg_odom >= 2680.0f && dbg_odom <= 2830.0f) ||
-        (dbg_odom >= 5570.0f && dbg_odom <= 5720.0f)) {
-        target_speed_now = 17.0f;
+//    if ((dbg_odom >= 2680.0f && dbg_odom <= 2830.0f) ||
+//        (dbg_odom >= 5570.0f && dbg_odom <= 5720.0f)) {
+//        target_speed_now = 17.0f;
+//    }
+
+    /* 直角：低速通过 */
+    if (out.state == TS_CORNER) {
+        target_speed_now = TL_CORNER_SPEED;
+    }
+
+    /* 断路：20 */
+    if (out.state == TS_GAP) {
+        target_speed_now = TL_GAP_SPEED;
+    }
+
+    /* 判定入环后：20；小环 0.8s，大环 1.2s，然后回 TARGET_SPEED */
+    static uint8_t  ra_speed_active = 0U;
+    static uint32_t ra_speed_t0 = 0U;
+    static uint32_t ra_entry_t0 = 0U;
+    static uint32_t ra_entry_ms = TL_RA_ENTRY_SPEED_MS_BIG;
+    static uint8_t  ra_4s_done = 0U;
+    static uint32_t ra_4s_t0 = 0U;
+
+    if (out.state == TS_RA_ENTRY && !ra_speed_active) {
+        ra_speed_active = 1U;
+        ra_speed_t0 = slow_now_ms;
+        ra_entry_t0 = slow_now_ms;
+        ra_4s_done = 0U;
+        ra_entry_ms = (out.ra_index & 1U) ?
+                      TL_RA_ENTRY_SPEED_MS_SMALL :
+                      TL_RA_ENTRY_SPEED_MS_BIG;
+    }
+
+    if (ra_speed_active) {
+        if ((slow_now_ms - ra_speed_t0) < ra_entry_ms) {
+            target_speed_now = TL_RA_ENTRY_SPEED;
+        } else {
+            target_speed_now = TARGET_SPEED;
+            ra_speed_active = 0U;
+        }
+    }
+
+    /* 入环 4s 还没出环：20，持续 1s */
+    if (out.state >= TS_RA_ENTRY && out.state <= TS_RA_EXIT) {
+        if (!ra_4s_done &&
+            (slow_now_ms - ra_entry_t0) >= TL_RA_4S_MS) {
+            ra_4s_done = 1U;
+            ra_4s_t0 = slow_now_ms;
+        }
+    }
+
+    if (ra_4s_done &&
+        (slow_now_ms - ra_4s_t0) < TL_RA_4S_SLOW_MS) {
+        target_speed_now = TL_RA_ENTRY_SPEED;
+    }
+
+    /* 判定出环后：20；小环 1.5s，大环 0.8s，然后回 TARGET_SPEED */
+    static uint8_t  ra_exit_speed_active = 0U;
+    static uint32_t ra_exit_speed_t0 = 0U;
+    static uint32_t ra_exit_ms = TL_RA_EXIT_SPEED_MS_SMALL;
+
+    if (out.state == TS_RA_EXIT && !ra_exit_speed_active) {
+        ra_exit_speed_active = 1U;
+        ra_exit_speed_t0 = slow_now_ms;
+        ra_exit_ms = (out.ra_index & 1U) ?
+                     TL_RA_EXIT_SPEED_MS_SMALL :
+                     TL_RA_EXIT_SPEED_MS_BIG;
+    }
+
+    if (ra_exit_speed_active) {
+        if ((slow_now_ms - ra_exit_speed_t0) < ra_exit_ms) {
+            target_speed_now = TL_RA_EXIT_SPEED;
+        } else {
+            target_speed_now = TARGET_SPEED;
+            ra_exit_speed_active = 0U;
+        }
     }
 
     //差速选择：
@@ -303,9 +363,13 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
     debug1 = target_speed_now;
     debug2 = differential_speed;
 
-    /* 减速转弯时允许适度负内轮：只在 slow/brake 窗口内 */
-    uint8_t allow_neg = (slow_now_ms < slow_until || brake_active) ? 1U : 0U;
+    /* 减速转弯时允许适度负内轮：slow/brake 窗口 + 直角状态 */
+    uint8_t allow_neg = (slow_now_ms < slow_until || brake_active ||
+                         out.state == TS_CORNER) ? 1U : 0U;
     float neg_max = allow_neg ? TL_NEG_MAX : 0.0f;
+    if (out.state == TS_CORNER) {
+        neg_max = TL_CORNER_NEG_MAX;   /* 直角允许更大的内轮反转 */
+    }
 
     float tl = target_speed_now - differential_speed;
     float tr = target_speed_now + differential_speed;

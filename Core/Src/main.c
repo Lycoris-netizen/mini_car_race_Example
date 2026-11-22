@@ -345,6 +345,11 @@ int main(void)
     if(run_flag==1){
       update_data();
       parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+
+      /* 里程到 6160 停车 */
+      if(dbg_odom >= 6160.0f){
+          run_flag = 2;
+      }
     }
     else if(run_flag == 2){
       // ========== 自动停车状态 ==========
