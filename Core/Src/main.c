@@ -209,8 +209,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
   if(htim == &htim2){
     run_time++;
     
-    // 等待 1000ms (1秒) 后发车
-    if(run_time > 1000 && run_flag == 0){
+    // 等待 600ms (0.6秒) 后发车
+    if(run_time > 600 && run_flag == 0){
       run_flag = 1;
       drive_time = 0; // 发车瞬间，清零运行计时器
     }
@@ -280,15 +280,15 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
 	HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
-  Init_brushless_motor(); //等待无刷电调负压启动完成
+  // Init_brushless_motor(); //等待无刷电调负压启动完成
   /* USER CODE BEGIN 2 */
-  dodo_BMI270_init(); // 初始化陀螺仪
+  // dodo_BMI270_init(); // 初始化陀螺仪
 
-  track_init();             // 赛道元素状态机初始化
-  track_calibrate_gyro();   // 静止600ms采陀螺仪零偏（此时车必须不动）
+  // track_init();             // 赛道元素状态机初始化
+  // track_calibrate_gyro();   // 静止600ms采陀螺仪零偏（此时车必须不动）
 
   //pwm示例
-	motor_init();
+	// motor_init();
 	//HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
 	//HAL_GPIO_WritePin(R_DIR_GPIO_Port, R_DIR_Pin, GPIO_PIN_SET);
 	//TIM1->CCR1=500;
@@ -322,7 +322,13 @@ int main(void)
       HAL_Delay(20);
   }
 
-  HAL_TIM_Base_Start_IT(&htim2);//按下发车键等待1s后发车
+  Init_brushless_motor(); //等待无刷电调负压启动完成
+  dodo_BMI270_init(); // 初始化陀螺仪
+  track_init();             // 赛道元素状态机初始化
+  track_calibrate_gyro();   // 静止600ms采陀螺仪零偏（此时车必须不动）
+  motor_init();
+
+  HAL_TIM_Base_Start_IT(&htim2);//初始化完成后等待0.6s发车
   
 	//转4次90度，间隔1s
 	/*HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
@@ -347,7 +353,7 @@ int main(void)
       parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
 
       /* 里程到 5915 停车 */
-      if(dbg_odom >= 5915.0f){
+      if(dbg_odom >= 5915.0f){//地图1和2设为5915 地图3设为5960 地图4设为5845
           run_flag = 2;
       }
     }

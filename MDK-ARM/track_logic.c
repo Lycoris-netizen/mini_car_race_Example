@@ -59,6 +59,7 @@ static float    s_ra_entry_heading;
 static float    s_ra_net_max;
 static float    s_ra_comp;
 static uint8_t  s_ra_inner;
+static uint8_t  s_ra_big;           /* 本次环岛是否检测到内环（大环） */
 static float    s_ra_inner_min;
 static float    s_ra_exit_offset;   /* 本次环岛的出环偏移 */
 static uint32_t s_ra_start_t0;      /* 入环触发时刻 */
@@ -87,10 +88,14 @@ typedef struct {
 } odom_window_t;
 
 static const odom_window_t s_gap_windows[] = {
-    { 1150.0f, 1240.0f },   /* 第一处断路 */
-    { 4105.0f, 4185.0f },   /* 第二处断路 */
+    { 1145.0f, 1205.0f },   /* 第一处断路 */
+    { 4095.0f, 4160.0f },   /* 第二处断路 */
 };
-
+/*
+1,2号图 1145-1205 4095-4160
+3号图 1160-1220 4143-4208
+4号图 1130-1190 4060-4125
+*/
 #define GAP_WINDOW_COUNT (sizeof(s_gap_windows) / sizeof(s_gap_windows[0]))
 
 static uint8_t tl_in_gap_window(float odom)
@@ -131,6 +136,7 @@ void track_init(void)
     s_ra_net_max = 0.0f;
     s_ra_comp = 0.0f;
     s_ra_inner = 0U;
+    s_ra_big = 0U;
     s_ra_inner_min = 0.0f;
     s_ra_exit_offset = TL_RA_EXIT_OFFSET_SMALL_DEG;
     s_ra_start_t0 = 0U;
@@ -216,6 +222,7 @@ static void tl_start_ra(uint8_t dir, uint32_t now)
     s_ra_net_max = 0.0f;
     s_ra_comp = 0.0f;
     s_ra_inner = 0U;
+    s_ra_big = 0U;
     s_ra_inner_min = 0.0f;
     s_ra_exit_offset = TL_RA_EXIT_OFFSET_SMALL_DEG;
     s_ra_start_t0 = now;
@@ -409,6 +416,7 @@ void track_update(const track_input_t *in, track_output_t *out)
             if ((s_ra_net_max - net) >= TL_RA_INNER_DETECT_DEG) {
                 /* 进入内环：开始记录最低点 */
                 s_ra_inner = 1U;
+                s_ra_big = 1U;
                 s_ra_inner_min = net;
                 s_ra_exit_offset = TL_RA_EXIT_OFFSET_BIG_DEG;  /* 大环出环偏移 */
             } else if (net > s_ra_net_max) {
@@ -431,7 +439,9 @@ void track_update(const track_input_t *in, track_output_t *out)
 
         out->override = 0U;   /* 环内用 PPDD * 1.0，不用1.5 */
 
+        /* 只有小环允许 330° 出环；检测到内环（大环）只靠超时退出 */
         if (turned >= TL_RA_EXIT_YAW_DEG &&
+            !s_ra_big &&
             (now - s_ra_start_t0) >= TL_RA_MIN_RUN_MS) {
             s_state = TS_RA_EXIT;
             s_ra_t0 = now;
@@ -444,6 +454,13 @@ void track_update(const track_input_t *in, track_output_t *out)
     }
 
     case TS_RA_EXIT: {
+        /* 出环打角中触发直角：强制结束出环，直角结束后回 NORMAL */
+        if (tl_try_corner(now)) {
+            s_corner_return_state = TS_NORMAL;
+            s_armed = 0U;
+            break;
+        }
+
         float target = s_ra_entry_heading + s_ra_exit_offset;
         float err = tl_ang_diff(target, s_yaw);
         out->diff = tl_clamp(TL_RA_EXIT_KP * err,

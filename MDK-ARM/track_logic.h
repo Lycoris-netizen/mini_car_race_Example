@@ -57,8 +57,6 @@
 #define TL_RA_EXIT_SPEED        20.0f   /* 出环后的目标速度 */
 #define TL_RA_EXIT_SPEED_MS_SMALL 800U /* 小环出环后保持多久 */
 #define TL_RA_EXIT_SPEED_MS_BIG    800U /* 大环出环后保持多久 */
-#define TL_RA_4S_MS             3400U   /* 入环 3.4s 未出环 */
-#define TL_RA_4S_SLOW_MS        1500U   /* 超时后减速持续 1.5s */
 
 /* ================= 直角（丢线转弯） ================= */
 #define TL_CORNER_ARM_POS       3.0f    /* |line_pos| >= 此值，预判直角 */
@@ -74,7 +72,7 @@
 /* ================= 断路（保持直行） ================= */
 #define TL_GAP_POS              1.0f    /* 丢线前 |line_pos| <= 此值，认为断路 */
 #define TL_GAP_LOST_MS          15U     /* active==0 持续多久触发 */
-#define TL_GAP_TURN_DEG         (-30.0f) /* 断路后右转35°；正=左，负=右 */ /*1号图-35 2号图-30*/
+#define TL_GAP_TURN_DEG         (-30.0f) /* 断路后右转35°；正=左，负=右 */ /*1号图-35 2号图-30 3号图-30 4号图-37*/
 #define TL_GAP_KP               0.22f
 #define TL_GAP_DIFF_MAX         12.0f
 #define TL_GAP_TIMEOUT_MS       3000U   /* 断路保持最长时间 */
