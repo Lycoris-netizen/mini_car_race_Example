@@ -209,8 +209,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
   if(htim == &htim2){
     run_time++;
     
-    // 等待 600ms (0.6秒) 后发车
-    if(run_time > 600 && run_flag == 0){
+    // 等待 2400ms (2.4秒) 后发车
+    if(run_time > 2400 && run_flag == 0){
       run_flag = 1;
       drive_time = 0; // 发车瞬间，清零运行计时器
     }
@@ -328,7 +328,7 @@ int main(void)
   track_calibrate_gyro();   // 静止600ms采陀螺仪零偏（此时车必须不动）
   motor_init();
 
-  HAL_TIM_Base_Start_IT(&htim2);//初始化完成后等待0.6s发车
+  HAL_TIM_Base_Start_IT(&htim2);//初始化完成后等待2.4s发车
   
 	//转4次90度，间隔1s
 	/*HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
