@@ -355,7 +355,7 @@ int main(void)
       parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
 
       /* 里程到 5915 停车 */
-      if(dbg_odom >= 5940.0f){//地图1和2设为5915 地图3设为5940 地图4设为5845
+      if(dbg_odom >= 6090.0f){//地图1和2设为6055 地图3设为6090 地图4设为5845
           run_flag = 2;
       }
     }
@@ -404,7 +404,7 @@ int main(void)
           TIM1->CCR1 = 0;
           TIM1->CCR2 = 0;
           target_speed_override = 15.0f;   // 切回 PPDD，速度 15
-          all_on_start_t0 = HAL_GetTick() + 800U;   // 0.8s 后再开始全亮检测
+          all_on_start_t0 = HAL_GetTick() + 500U;   // 0.5s 后再开始全亮检测
           run_flag = 5;
       }
     }
