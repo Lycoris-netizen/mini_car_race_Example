@@ -30,5 +30,6 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
 void track_debug_update(uint16_t mux_value, float gyro_z,float left_encoder, float right_encoder);
 
 extern uint8_t flag;
+extern float target_speed_override;
 
 #endif

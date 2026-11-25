@@ -36,43 +36,37 @@
 
 /* ================= 环岛 ================= */
 #define TL_RA_ENTRY_DEG         33.0f   /* 六边形上顶点支线约30° */
-#define TL_RA_ENTRY_KP          0.22f
-#define TL_RA_ENTRY_DIFF_MAX    12.0f
-#define TL_RA_ENTRY_TIMEOUT_MS  600
+#define TL_RA_ENTRY_KP          0.80f
+#define TL_RA_ENTRY_DIFF_MAX    40.0f
+#define TL_RA_ENTRY_TIMEOUT_MS  120
 
 #define TL_RA_EXIT_YAW_DEG      330.0f  /* 一圈360°，提前30°回正 */
 #define TL_RA_INNER_DETECT_DEG  295.0f  /* 净角下降超过此值，认为进入内环 */
 #define TL_RA_INNER_END_DEG      5.0f   /* 净角从最低点回升超过此值，认为内环结束 */
-#define TL_RA_EXIT_KP           0.22f
-#define TL_RA_EXIT_DIFF_MAX     12.0f
+#define TL_RA_EXIT_KP           0.80f
+#define TL_RA_EXIT_DIFF_MAX     40.0f
 #define TL_RA_EXIT_OFFSET_SMALL_DEG  (0.0f)    /* 小环出环：不偏移 */
 #define TL_RA_EXIT_OFFSET_BIG_DEG    (-25.0f)  /* 大环出环：右25° */
-#define TL_RA_EXIT_TIMEOUT_MS   600
+#define TL_RA_EXIT_TIMEOUT_MS   120
 #define TL_RA_RUN_TIMEOUT_MS    4600U   /* 环内 5s 未出环：直接回 NORMAL，不打角 */
 #define TL_RA_MIN_RUN_MS        1000U   /* 入环后至少 1s 才允许出环判定 */
 #define TL_RA_COOLDOWN_MS       9000U   /* 入环后 9s 内禁止再次入环 */
-#define TL_RA_ENTRY_SPEED       20.0f   /* 判定入环后的目标速度 */
-#define TL_RA_ENTRY_SPEED_MS_SMALL 800U /* 小环入环后保持多久 */
-#define TL_RA_ENTRY_SPEED_MS_BIG   800U /* 大环入环后保持多久 */
-#define TL_RA_EXIT_SPEED        20.0f   /* 出环后的目标速度 */
-#define TL_RA_EXIT_SPEED_MS_SMALL 800U /* 小环出环后保持多久 */
-#define TL_RA_EXIT_SPEED_MS_BIG    800U /* 大环出环后保持多久 */
 
 /* ================= 直角（丢线转弯） ================= */
 #define TL_CORNER_ARM_POS       3.0f    /* |line_pos| >= 此值，预判直角 */
 #define TL_CORNER_LOST_MS       15U     /* active==0 持续多久触发 */
 #define TL_CORNER_TURN_DEG      90.0f   /* 目标转角 */
-#define TL_CORNER_KP            0.50f
-#define TL_CORNER_DIFF_MAX      40.0f
+#define TL_CORNER_KP            1.00f
+#define TL_CORNER_DIFF_MAX      60.0f
 #define TL_CORNER_NEG_MAX       10.0f   /* 直角状态允许的负内轮 */
 #define TL_CORNER_TOL_DEG       4.0f
 #define TL_CORNER_TIMEOUT_MS    600U
-#define TL_CORNER_SPEED         10.0f   /* 直角中的目标速度 */
+#define TL_CORNER_SPEED         15.0f   /* 直角中的目标速度 */
 
 /* ================= 断路（保持直行） ================= */
 #define TL_GAP_POS              1.0f    /* 丢线前 |line_pos| <= 此值，认为断路 */
 #define TL_GAP_LOST_MS          15U     /* active==0 持续多久触发 */
-#define TL_GAP_TURN_DEG         (-30.0f) /* 断路后右转35°；正=左，负=右 */ /*1号图-35 2号图-30 3号图-30 4号图-37*/
+#define TL_GAP_TURN_DEG         (-27.0f) /* 断路后右转35°；正=左，负=右 */ /*1号图-35 2号图-30 3号图-27 4号图-37*/
 #define TL_GAP_KP               0.22f
 #define TL_GAP_DIFF_MAX         12.0f
 #define TL_GAP_TIMEOUT_MS       3000U   /* 断路保持最长时间 */

@@ -204,13 +204,15 @@ float gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z;
 volatile uint32_t run_time = 0;
 volatile uint32_t drive_time = 0; // 新增：发车后的运行时间
 volatile uint8_t run_flag = 0;
+uint32_t post_stop_t0 = 0U;
+uint32_t all_on_start_t0 = 0U;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
   if(htim == &htim2){
     run_time++;
     
-    // 等待 2400ms (2.4秒) 后发车
-    if(run_time > 2400 && run_flag == 0){
+    // 等待 600ms (0.6秒) 后发车
+    if(run_time > 600 && run_flag == 0){
       run_flag = 1;
       drive_time = 0; // 发车瞬间，清零运行计时器
     }
@@ -328,7 +330,7 @@ int main(void)
   track_calibrate_gyro();   // 静止600ms采陀螺仪零偏（此时车必须不动）
   motor_init();
 
-  HAL_TIM_Base_Start_IT(&htim2);//初始化完成后等待2.4s发车
+  HAL_TIM_Base_Start_IT(&htim2);//初始化完成后等待0.6s发车
   
 	//转4次90度，间隔1s
 	/*HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
@@ -353,23 +355,90 @@ int main(void)
       parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
 
       /* 里程到 5915 停车 */
-      if(dbg_odom >= 5915.0f){//地图1和2设为5915 地图3设为5960 地图4设为5845
+      if(dbg_odom >= 5940.0f){//地图1和2设为5915 地图3设为5940 地图4设为5845
           run_flag = 2;
       }
     }
     else if(run_flag == 2){
-      // ========== 自动停车状态 ==========
-      // 强制把 PWM 占空比清零，电机立刻停转
+      // ========== 里程停车 ==========
       TIM1->CCR1 = 0;
       TIM1->CCR2 = 0;
-      
-      // 把状态切换到 3，防止反复进入此循环
-      run_flag = 3; 
+
+      // 记录停车时刻，进入 1 秒等待
+      post_stop_t0 = HAL_GetTick();
+      run_flag = 7;
+    }
+    else if(run_flag == 7){
+      // ========== 停车后等待 0.5 秒 ==========
+      if((HAL_GetTick() - post_stop_t0) >= 500U){
+          run_flag = 4;
+      }
+    }
+    else if(run_flag == 4){
+      // ========== 缓慢原地旋转 180° ==========
+      static uint32_t turn_last = 0U;
+      static float    turn_yaw  = 0.0f;
+      static uint8_t  turn_started = 0U;
+
+      dodo_BMI270_get_data();
+      gyro_z = BMI270_gyro_transition(BMI270_gyro_z);
+
+      if(!turn_started){
+          turn_started = 1U;
+          turn_last = HAL_GetTick();
+          turn_yaw = 0.0f;
+
+          // 左轮正转、右轮反转，低速原地旋转
+          HAL_GPIO_WritePin(L_DIR_GPIO_Port, L_DIR_Pin, GPIO_PIN_SET);
+          HAL_GPIO_WritePin(R_DIR_GPIO_Port, R_DIR_Pin, GPIO_PIN_RESET);
+          TIM1->CCR1 = 600;
+          TIM1->CCR2 = 600;
+      }
+
+      uint32_t now_ms = HAL_GetTick();
+      float dt = (now_ms - turn_last) / 1000.0f;
+      turn_last = now_ms;
+      turn_yaw += gyro_z * dt;
+
+      if(turn_yaw >= 180.0f || turn_yaw <= -180.0f){
+          TIM1->CCR1 = 0;
+          TIM1->CCR2 = 0;
+          target_speed_override = 15.0f;   // 切回 PPDD，速度 15
+          all_on_start_t0 = HAL_GetTick() + 800U;   // 0.8s 后再开始全亮检测
+          run_flag = 5;
+      }
+    }
+    else if(run_flag == 5){
+      // ========== PPDD 循迹，速度 15，冷却后检测 12 路全亮 ==========
+      update_data();
+      parallel_pid_control(mux_value,gyro_z,left_encoder_speed,right_encoder_speed);
+
+      if(HAL_GetTick() >= all_on_start_t0){
+          uint8_t all_on = 1U;
+          for(uint8_t i = 0U; i < 12U; i++){
+              if(!MUX_GET_CHANNEL(mux_value, i)){
+                  all_on = 0U;
+                  break;
+              }
+          }
+
+          if(all_on){
+              TIM1->CCR1 = 0;
+              TIM1->CCR2 = 0;
+              target_speed_override = 0.0f;
+              run_flag = 6;
+          }
+      }
     }
     else if(run_flag == 3){
       // ========== 彻底停车状态 ==========
       // 小车已完全停下，在这里空转等待即可
       // 如果需要，可以把单片机的其它外设也关掉以省电
+    }
+    else if(run_flag == 6){
+      // ========== 全部动作完成，彻底停车 ==========
+      TIM1->CCR1 = 0;
+      TIM1->CCR2 = 0;
     }
     // 以下为陀螺仪使用示例
     // dodo_BMI270_get_data();                         // 调用此函数会更新陀螺仪数据

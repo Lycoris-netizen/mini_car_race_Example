@@ -39,6 +39,7 @@
 #define PWM_MIN -1100
 
 float target_speed_now=TARGET_SPEED;
+float target_speed_override=0.0f;   /* >0 时强制覆盖目标速度 */
 float weighted_sum=0.0f;
 float last_position_error=0.0f;
 uint8_t active_count=0;
@@ -282,48 +283,9 @@ void parallel_pid_control(uint16_t mux_value,float gyro_z,float left_encoder,flo
         target_speed_now = TL_GAP_SPEED;
     }
 
-    /* 判定入环后：20；小环 0.8s，大环 0.8s，然后回 TARGET_SPEED */
-    static uint8_t  ra_speed_active = 0U;
-    static uint32_t ra_speed_t0 = 0U;
-    static uint32_t ra_entry_ms = TL_RA_ENTRY_SPEED_MS_BIG;
-
-    if (out.state == TS_RA_ENTRY && !ra_speed_active) {
-        ra_speed_active = 1U;
-        ra_speed_t0 = slow_now_ms;
-        ra_entry_ms = (out.ra_index & 1U) ?
-                      TL_RA_ENTRY_SPEED_MS_SMALL :
-                      TL_RA_ENTRY_SPEED_MS_BIG;
-    }
-
-    if (ra_speed_active) {
-        if ((slow_now_ms - ra_speed_t0) < ra_entry_ms) {
-            target_speed_now = TL_RA_ENTRY_SPEED;
-        } else {
-            target_speed_now = TARGET_SPEED;
-            ra_speed_active = 0U;
-        }
-    }
-
-    /* 判定出环后：20；小环 0.8s，大环 0.8s，然后回 TARGET_SPEED */
-    static uint8_t  ra_exit_speed_active = 0U;
-    static uint32_t ra_exit_speed_t0 = 0U;
-    static uint32_t ra_exit_ms = TL_RA_EXIT_SPEED_MS_SMALL;
-
-    if (out.state == TS_RA_EXIT && !ra_exit_speed_active) {
-        ra_exit_speed_active = 1U;
-        ra_exit_speed_t0 = slow_now_ms;
-        ra_exit_ms = (out.ra_index & 1U) ?
-                     TL_RA_EXIT_SPEED_MS_SMALL :
-                     TL_RA_EXIT_SPEED_MS_BIG;
-    }
-
-    if (ra_exit_speed_active) {
-        if ((slow_now_ms - ra_exit_speed_t0) < ra_exit_ms) {
-            target_speed_now = TL_RA_EXIT_SPEED;
-        } else {
-            target_speed_now = TARGET_SPEED;
-            ra_exit_speed_active = 0U;
-        }
+    /* 外部强制限速（停车后 PPDD 20 速度用） */
+    if (target_speed_override > 0.0f) {
+        target_speed_now = target_speed_override;
     }
 
     //差速选择：
